@@ -1,35 +1,36 @@
 # 性能优化指南
 
-本指南介绍 FASTJSON 2 的调优策略和最佳实践。
+本指南介绍本精简版（纯树模式）的调优策略和最佳实践。
 
 ## 性能架构
 
-FASTJSON 2 通过以下关键优化实现高性能：
+本库通过以下关键优化实现高性能：
 
-### ASM 代码生成
+### 1. Unsafe 批量数组读写
 
-FASTJSON 2 在运行时使用 ASM 为对象读取器和写入器生成优化的字节码，消除了字段访问和方法调用的反射开销。生成的代码使用基于字段名称哈希的 switch-case 语句，在反序列化时实现 O(1) 的字段查找。
+在解析/序列化内核中，使用 `Unsafe.putLong` / `getLong` 一次读写 8 个字节，并绕过 JVM 每次 `bytes[i]` 的边界检查。这是 JSON 字节级密集操作（数字格式化、字符串转义、字段名匹配）的核心加速手段，比纯逐字节循环快约 30-60%。
 
-- **时机**: 首次序列化/反序列化某类型时（一次性开销）
-- **实现**: `ObjectReaderCreatorASM`、`ObjectWriterCreatorASM`
-- **降级**: 当 ASM 不可用时使用反射创建器（如 GraalVM Native Image）
+- 分布：`JSONReaderUTF8`（123 处）、`IOUtils`（70 处）、`JSONWriterUTF8` / `JSONWriterUTF16` 等，合计约 259 处
+- 注意：`sun.misc.Unsafe` 从 JDK 8 到当前版本一直存在，JDK 内部自身大量使用；IDE 的 "Access restriction" 仅为静态检查，编译（`-XDignore.symbol.file`）与运行均无问题
+- 测试代码已全部改为 `IOUtils.getLongLE` / `getIntLE` 等公开方法，不直接触碰 Unsafe
 
-### Lambda Metafactory
+### 2. 编码特化解析器
 
-在 JDK 8+ 上，FASTJSON 2 使用 `LambdaMetafactory` 创建高性能方法句柄，作为反射的替代方案。这为 getter/setter 调用提供接近原生调用的性能。
+为不同编码提供专用实现，库根据输入类型自动选择：
 
-### 字符串驻留
-
-`SymbolTable` 为频繁使用的字段名称提供高效的字符串驻留，减少解析过程中的内存分配和 GC 压力。
-
-### 编码特化解析器
-
-FASTJSON 2 为不同编码提供专用的解析器实现：
-- `JSONReaderUTF8` - 针对 UTF-8 字节流优化
+- `JSONReaderUTF8` - 针对 UTF-8 字节流优化（字符分类查表）
 - `JSONReaderUTF16` - 针对 UTF-16（Java String 内部表示）优化
 - `JSONReaderASCII` - 纯 ASCII 内容的快速路径
 
-库会根据输入类型自动检测最优解析器。
+### 3. 数字查表与精确解析
+
+- `ED` / `ED5` / `EF` 常量表：整数/浮点序列化查表，避免运行时计算
+- `FDBigInteger` / `MutableBigInteger` / `Scientific`：移植自 JDK `FloatingDecimal` 的精确 double/float 解析，无精度损失
+- `Fnv`：FNV-1a 64 位哈希，字段名快速匹配免字符串比较
+
+### 4. 手写递归解析（无反射分派）
+
+`JSONReader.readAny()` 为手写 switch 递归，`JSONWriter.writeAny()` 为 instanceof 分支——不经过任何 Provider / 反射层，调用开销极低。
 
 ## 调优策略
 
@@ -42,27 +43,15 @@ FASTJSON 2 为不同编码提供专用的解析器实现：
 ```java
 // 更快：从 bytes 解析
 byte[] bytes = getJsonBytes(); // 来自网络、文件等
-User user = JSON.parseObject(bytes, User.class);
+JSONObject obj = JSON.parseObject(bytes);
 
 // 更快：序列化为 bytes
-byte[] output = JSON.toJSONBytes(user);
+byte[] output = JSON.toJSONBytes(obj);
 ```
 
 这避免了 String 编码/解码的开销，在 HTTP/RPC 场景中尤其有效。
 
-### 2. 使用 BeanToArray 紧凑序列化
-
-**影响: 中**
-
-`BeanToArray` Feature 将对象序列化为 JSON 数组而非对象，去除字段名开销：
-
-```java
-// 输出: [1,"John",25] 而非 {"id":1,"name":"John","age":25}
-String json = JSON.toJSONString(user, JSONWriter.Feature.BeanToArray);
-User user = JSON.parseObject(json, User.class, JSONReader.Feature.SupportArrayToBean);
-```
-
-### 3. 最小化 Feature 使用
+### 2. 最小化 Feature 使用
 
 **影响: 低-中**
 
@@ -70,55 +59,38 @@ User user = JSON.parseObject(json, User.class, JSONReader.Feature.SupportArrayTo
 
 ```java
 // 好：仅启用需要的
-String json = JSON.toJSONString(user, JSONWriter.Feature.WriteNulls);
+String json = JSON.toJSONString(obj, JSONWriter.Feature.PrettyFormat);
 
 // 避免：启用很多"以防万一"的 Feature
-String json = JSON.toJSONString(user,
-    JSONWriter.Feature.WriteNulls,
+String json2 = JSON.toJSONString(obj,
     JSONWriter.Feature.PrettyFormat,        // 不需要就跳过
-    JSONWriter.Feature.ReferenceDetection,  // 没有循环引用就跳过
-    JSONWriter.Feature.MapSortField);       // 不关心顺序就跳过
+    JSONWriter.Feature.SortMapEntriesByKeys // 不关心顺序就跳过
+);
 ```
 
-### 4. 使用 FieldBased 获取最大速度
+### 3. 纯 ASCII 内容走 UTF8 快速路径
 
 **影响: 中**
 
-`FieldBased` 模式直接访问字段而非通过 getter/setter 方法，速度略快：
+内容为纯 ASCII 时，开启 `OptimizedForAscii` 使用 `JSONWriterUTF8` 实现：
 
 ```java
-String json = JSON.toJSONString(user, JSONWriter.Feature.FieldBased);
-User user = JSON.parseObject(json, User.class, JSONReader.Feature.FieldBased);
+String json = JSON.toJSONString(obj, JSONWriter.Feature.OptimizedForAscii);
 ```
 
-> 注意：这通过反射/ASM 访问私有字段，可能在所有环境中都不可用。
+### 4. 预分配容器（可选）
 
-### 5. 缓存自定义类型的 ObjectReader/ObjectWriter
-
-**影响: 中**
-
-如果注册了自定义 reader/writer，确保它们是单例：
-
-```java
-// 好：单例模式
-class MoneyWriter implements ObjectWriter<Money> {
-    static final MoneyWriter INSTANCE = new MoneyWriter();
-    // ...
-}
-JSONFactory.getDefaultObjectWriterProvider().register(Money.class, MoneyWriter.INSTANCE);
-```
+大数据量场景下，可通过 `JSONFactory.setDefaultObjectSupplier` / `setDefaultArraySupplier` 定制树模型的容器实现（如预初始化容量的 Map / List 工厂）。
 
 ## 线程安全
 
-了解线程安全有助于避免不必要的同步：
-
 | 组件 | 线程安全？ | 说明 |
 |------|:---:|------|
-| `JSON` 静态方法 | 是 | 主入口，始终安全 |
-| `JSONObject` / `JSONArray` | 否 | 未同步，类似 `HashMap`/`ArrayList` |
+| `JSON` 静态方法 | 是 | 主入口，无共享可变状态，始终安全 |
+| `JSONObject` / `JSONArray` | 否 | 未同步，类似 `HashMap` / `ArrayList` |
 | `JSONReader` / `JSONWriter` | 否 | 每次操作创建，不要跨线程共享 |
-| `ObjectReader` / `ObjectWriter` | 是 | 初始化后可安全共享 |
-| `ObjectReaderProvider` / `ObjectWriterProvider` | 是 | 内部缓存是线程安全的 |
+| `JSONFactory` 静态配置 | 是（配置后） | 启动时配置，运行期只读 |
+| util 层静态方法 | 是 | 无状态（Unsafe 只读常量） |
 
 ## JVM 调优
 
@@ -131,5 +103,5 @@ JSONFactory.getDefaultObjectWriterProvider().register(Money.class, MoneyWriter.I
 
 ### 内存注意事项
 
-- FASTJSON 2 使用线程本地缓冲区进行序列化，减少 GC 压力但增加每线程内存占用。
-- 对于多线程应用，请监控线程本地缓冲区使用情况。
+- 解析时小数默认按 `BigDecimal` 存储（精度优先）；对内存敏感的大数据场景可考虑 `UseDoubleForDecimals`。
+- `JSONObject` 默认 `LinkedHashMap` 保持插入顺序；不需要顺序时可定制容器或自行 `Map` 化。

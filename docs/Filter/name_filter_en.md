@@ -1,29 +1,15 @@
-# NameFilter
-`FASTJSON` provides an extension for processing field names during serialization called `NameFilter`. The interface is as follows:
-```java
-package com.alibaba.fastjson2.filter;
+# NameFilter / ContextNameFilter (Removed)
 
-public interface NameFilter
-        extends Filter {
-    String process(Object object, String name, Object value);
-}
-```
+> **This filter has been removed in the trimmed build.** `com.alibaba.fastjson2.filter` does not exist.
 
-`NameFilter` provides implementations for common requirements through the `of` method, for example:
-```java
-public class Bean {
-    public int userId;
-}
+NameFilter / ContextNameFilter modified property names during serialization. It depended on the JavaBean serialization pipeline and the reflection system; this build is a pure tree model with no Bean binding, so it was deleted.
 
-@Test
-public void test() {
-    Bean bean = new Bean();
-    bean.userId = 101;
+## Replacement
 
-    NameFilter pascalNameFilter = NameFilter.of(PropertyNamingStrategy.PascalCase);
-    String str = JSON.toJSONString(bean, pascalNameFilter);
-    assertEquals("{\"UserId\":101}", str);
-    JSONObject object = JSON.parseObject(str);
-    assertEquals(101, object.get("UserId"));
-}
-```
+Handle `JSONObject` / `JSONArray` directly in the tree model (iterate `entrySet()` to change keys/values, or put/remove to control output fields).
+
+## Related Documents
+
+- [Filters Overview](index_en.md) (removed)
+- [Overview](../index.md)
+- [Trim & Evaluation Report](../精简评估报告.md)

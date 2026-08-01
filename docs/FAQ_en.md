@@ -1,258 +1,160 @@
 # Frequently Asked Questions
 
-## General
+## Overview
 
-### What is the difference between FASTJSON and FASTJSON 2?
+### What is the difference between this trimmed build and full FASTJSON 2?
 
-FASTJSON 2 is a rewrite of the original FASTJSON library. Key differences:
+This repository is a **pure tree-model** build trimmed from FASTJSON 2.0.63:
 
-- **New package**: `com.alibaba.fastjson2` (v1 was `com.alibaba.fastjson`)
-- **Performance**: Optimized serialization and deserialization implementations
-- **More secure**: AutoType disabled by default, no hardcoded whitelist
-- **Modern Java**: JDK 11/17/21 optimizations, Record support
+- **Keeps only** the `JSON` / `JSONObject` / `JSONArray` tree API (`JSON.parseObject(String)` → `JSONObject`)
+- **Removed**: JavaBean binding (`parseObject(text, Bean.class)`, `toJavaObject`, `toList`), annotations (`@JSONField` / `@JSONType`), serialization filters, AutoType, `TypeReference`, date/time/UUID support, and extensions such as `JSONB` / `JSONPath` / `JSON Schema` / `CSV`
+- **No reflection system at runtime** (`reader/`, `writer/` packages deleted) - zero attack surface
+- See [精简评估报告.md](精简评估报告.md) for details
 
-### What Java versions are supported?
+### Which Java versions are supported?
 
-- **Core library**: Java 8+
-- **Full feature set**: Java 11+ (compact string optimizations)
-
-### Does FASTJSON 2 support GraalVM Native Image?
-
-Yes. FASTJSON 2 is compatible with GraalVM Native Image. Note that ASM-based code generation is not available in native images, so the reflection-based or lambda-based creator will be used instead.
+- **Core library**: Java 8+ (includes `JSONWriterUTF16JDK8` variants)
+- **Full features**: Java 11+ (compact strings)
 
 ## Parsing & Deserialization
 
 ### How do I parse JSON with unknown structure?
 
 ```java
-// Parse as JSONObject (for JSON objects)
+// Parse into JSONObject
 JSONObject obj = JSON.parseObject(jsonString);
 
-// Parse as JSONArray (for JSON arrays)
+// Parse into JSONArray
 JSONArray arr = JSON.parseArray(jsonString);
 
-// Parse as generic Object (auto-detect)
-Object result = JSON.parse(jsonString);
+// Parse into generic Object (auto-detected)
+Object result = JSON.parse(jsonString); // JSONObject / JSONArray / String / BigDecimal / Boolean
 ```
 
-### How do I parse JSON with generic types?
+### How do I parse JSON with generics?
 
-Use `TypeReference` for complex generic types:
+This build does **not** support generic JavaBean binding (`TypeReference` was removed). Use the tree model directly:
 
 ```java
-// List<User>
-List<User> users = JSON.parseObject(json, new TypeReference<List<User>>(){});
-
-// Map<String, List<User>>
-Map<String, List<User>> map = JSON.parseObject(json,
-    new TypeReference<Map<String, List<User>>>(){});
+JSONObject obj = JSON.parseObject(json);
+JSONArray users = obj.getJSONArray("users");
+JSONObject first = users.getJSONObject(0);
 ```
 
-### How do I handle date/time formats?
-
-Use `@JSONField(format = "...")` or global configuration:
+### How do I read nested objects / arrays?
 
 ```java
-// Per-field
-public class Event {
-    @JSONField(format = "yyyy-MM-dd HH:mm:ss")
-    public Date eventTime;
-}
-
-// Global
-JSON.configReaderDateFormat("yyyy-MM-dd");
-
-// Per-call
-User user = JSON.parseObject(json, User.class, "yyyy-MM-dd");
+JSONArray array = obj.getJSONArray("items");
+JSONObject child = obj.getJSONObject("child");
+String name = child.getString("name");
 ```
 
-### How do I handle case-insensitive field matching?
+### What type are decimals parsed as?
 
-Enable `SupportSmartMatch` to automatically handle camelCase, PascalCase, snake_case, and kebab-case:
+**`BigDecimal`** by default (no precision loss). For double/float:
 
 ```java
-User user = JSON.parseObject(json, User.class, JSONReader.Feature.SupportSmartMatch);
+JSONObject obj = JSON.parseObject(json, JSONReader.Feature.UseDoubleForDecimals);
+JSONObject obj2 = JSON.parseObject(json, JSONReader.Feature.UseBigDecimalForFloats);
 ```
 
-> Note: Smart matching is **off** by default in FASTJSON 2 (it was on by default in v1).
+### Is single-quote JSON supported?
 
-### How do I use BigDecimal for floating-point numbers?
+Yes. Single-quoted keys/values (`{'a':1}`) are allowed by default; disable with `JSONReader.Feature.DisableSingleQuote`.
 
-```java
-JSONObject obj = JSON.parseObject(json,
-    JSONReader.Feature.UseBigDecimalForFloats,
-    JSONReader.Feature.UseBigDecimalForDoubles);
-```
-
-### How do I trim string values during parsing?
+### How do I get null instead of an exception on parse errors?
 
 ```java
-User user = JSON.parseObject(json, User.class, JSONReader.Feature.TrimString);
+JSONObject obj = JSON.parseObject(json, JSONReader.Feature.NullOnError);
 ```
 
 ## Serialization
 
+### Which types can be serialized?
+
+`JSONObject`, `JSONArray`, `Map`, `List`, `String`, `Number` (incl. `BigDecimal` / `BigInteger`), `Boolean`, `null`. **Any other type** (e.g. `Date`, custom POJOs) throws `JSONException`.
+
 ### How do I include null fields in JSON output?
 
+Nulls are skipped by default:
+
 ```java
-String json = JSON.toJSONString(user, JSONWriter.Feature.WriteNulls);
+String json = JSON.toJSONString(obj, JSONWriter.Feature.WriteMapNullValue);
 ```
 
-For specific null handling strategies:
+Specific null handling:
 
 ```java
-// null String → ""
-JSONWriter.Feature.WriteNullStringAsEmpty
-
-// null List → []
-JSONWriter.Feature.WriteNullListAsEmpty
-
-// null Number → 0
-JSONWriter.Feature.WriteNullNumberAsZero
-
-// null Boolean → false
-JSONWriter.Feature.WriteNullBooleanAsFalse
+JSONWriter.Feature.WriteNullStringAsEmpty  // null String → ""
+JSONWriter.Feature.WriteNullListAsEmpty    // null List → []
+JSONWriter.Feature.WriteNullNumberAsZero   // null Number → 0
+JSONWriter.Feature.WriteNullBooleanAsFalse // null Boolean → false
 ```
 
 ### How do I pretty-print JSON?
 
 ```java
-String json = JSON.toJSONString(user, JSONWriter.Feature.PrettyFormat);
+String json = JSON.toJSONString(obj, JSONWriter.Feature.PrettyFormat);
+String json2 = JSON.toJSONString(obj,
+    JSONWriter.Feature.PrettyFormat,
+    JSONWriter.Feature.PrettyFormatWith2Space); // 2-space indent
 ```
 
-### How do I handle large Long values for JavaScript compatibility?
+### How do I handle large long values for JavaScript?
 
-JavaScript cannot handle Java `long` values beyond `Number.MAX_SAFE_INTEGER` (2^53 - 1). Use `BrowserCompatible` or `WriteLongAsString`:
+JavaScript cannot represent Java `long` values beyond `Number.MAX_SAFE_INTEGER` (2^53 - 1). Use `BrowserCompatible` or `WriteLongAsString`:
 
 ```java
-// Auto-detect and convert large numbers to strings
-String json = JSON.toJSONString(user, JSONWriter.Feature.BrowserCompatible);
-
-// Always serialize Long as String
-String json = JSON.toJSONString(user, JSONWriter.Feature.WriteLongAsString);
+String json = JSON.toJSONString(obj, JSONWriter.Feature.BrowserCompatible);
+String json = JSON.toJSONString(obj, JSONWriter.Feature.WriteLongAsString);
 ```
 
-### How do I serialize fields in a specific order?
-
-Use `@JSONField(ordinal = N)` or `@JSONType(orders = {...})`:
+### How do I sort Map keys (signing scenarios)?
 
 ```java
-public class User {
-    @JSONField(ordinal = 1)
-    public String name;
-
-    @JSONField(ordinal = 2)
-    public int age;
-}
-
-// or at class level
-@JSONType(orders = {"name", "age", "email"})
-public class User { ... }
+String json = JSON.toJSONString(obj, JSONWriter.Feature.SortMapEntriesByKeys);
 ```
 
-### How do I exclude specific fields from serialization?
+### Can I serialize Date?
 
-Multiple approaches:
+**No.** Date/time support was removed; serializing a `Date` throws `JSONException` (`WriterUtilDateAsMillis` has no effect either). Use strings or millisecond numbers in front-end scenarios.
 
-```java
-// Annotation-based
-@JSONField(serialize = false)
-public String password;
+## Differences from the full build / 1.x
 
-// Class-level ignore
-@JSONType(ignores = {"password", "secretKey"})
-public class User { ... }
+### Why doesn't `JSON.parseObject(json, Bean.class)` compile?
 
-// Filter-based
-PropertyFilter filter = (object, name, value) -> !"password".equals(name);
-String json = JSON.toJSONString(user, filter);
-```
+The method was removed. This build only provides the tree-model API and no longer supports JavaBean binding. If you need POJO mapping, use the full fastjson2 or convert on top of the tree model yourself.
 
-## AutoType & Security
+### Why is there no JSONPath / JSON Schema?
 
-### Is FASTJSON 2 secure by default?
+These extension modules were removed; they are not part of the core `JSON` text protocol.
 
-Yes. Unlike FASTJSON 1.x, FASTJSON 2 disables AutoType by default. JSON data containing `@type` fields will be ignored unless you explicitly enable AutoType.
+### Is this build secure?
 
-### How do I enable AutoType safely?
-
-Use `AutoTypeFilter` with a narrow whitelist instead of enabling global AutoType:
-
-```java
-// Preferred: scoped filter with narrow whitelist
-Filter autoTypeFilter = JSONReader.autoTypeFilter(
-    "com.mycompany.model"  // Only allow classes in this package
-);
-
-Object result = JSON.parseObject(json, Object.class, autoTypeFilter);
-```
-
-If you must enable global AutoType (not recommended for internet-facing services):
-
-```java
-Object result = JSON.parseObject(json, Object.class, JSONReader.Feature.SupportAutoType);
-```
-
-### What is SafeMode?
-
-SafeMode completely disables AutoType, even if explicitly configured in the code. Enable it with a JVM parameter:
-
-```
--Dfastjson2.parser.safeMode=true
-```
+Yes - the most secure form possible: AutoType and the entire reflection system (`reader/` / `writer/` etc.) are deleted, so there is no `@type` deserialization attack surface at runtime.
 
 ## Performance
 
 ### How do I get the best parsing performance?
 
-1. **Use byte[] input** when possible - `JSON.parseObject(bytes, Type.class)` avoids String conversion overhead.
-2. **Avoid unnecessary features** - Each enabled feature adds a small overhead.
+1. **Prefer byte[] input** - `JSON.parseObject(bytes)` avoids String encoding overhead.
+2. **Avoid unnecessary Features** - each enabled Feature adds a small check.
 
 ### How do I get the best serialization performance?
 
-1. **Use byte[] output** - `JSON.toJSONBytes(obj)` is faster than `JSON.toJSONString(obj)` for most use cases.
-2. **Use BeanToArray** - `JSONWriter.Feature.BeanToArray` produces smaller output and is faster to serialize.
-
-## Migration from Fastjson 1.x
-
-### What replaces `ObjectSerializer` and `ObjectDeserializer`?
-
-| Fastjson 1.x | Fastjson 2.x |
-|---------------|-------------|
-| `ObjectSerializer` | `ObjectWriter` |
-| `ObjectDeserializer` | `ObjectReader` |
-| `SerializerFeature` | `JSONWriter.Feature` |
-| `Feature` (parser) | `JSONReader.Feature` |
-
-See the full [Migration Guide](fastjson_1_upgrade_en.md) for the complete API mapping table.
+1. **Prefer byte[] output** - `JSON.toJSONBytes(obj)` is faster than `JSON.toJSONString(obj)`.
+2. **Pure ASCII content** - enable `JSONWriter.Feature.OptimizedForAscii` to use the UTF8 fast path.
 
 ## Troubleshooting
 
-### I'm getting `com.alibaba.fastjson2.JSONException`
+### I got `com.alibaba.fastjson2.JSONException`
 
 Common causes:
-1. **Malformed JSON** - Validate your JSON with a linter.
-2. **Type mismatch** - The JSON structure doesn't match the target Java type.
-3. **Missing default constructor** - The target class needs a no-arg constructor (or use `@JSONCreator`).
-4. **Enum mismatch** - Enable `ErrorOnEnumNotMatch` to get detailed error messages.
+1. **Malformed JSON** - validate the input.
+2. **Unsupported serialization type** - e.g. `Date`, custom POJO (see "Which types can be serialized?").
+3. **`not support write value type`** - a non-tree type is being serialized; check whether POJO instances slipped into a `Map` / `List`.
+4. **`not support feature`** - a Feature combination unsupported in tree mode (e.g. `ReferenceDetection` combined with certain features is rejected in the subclass `write(Map/List)`).
 
-### Fields are not being serialized
+### Decimal precision seems wrong?
 
-Check for:
-1. Fields must be `public` or have public getter methods (unless using `FieldBased` feature).
-2. `transient` fields are skipped by default.
-3. Check if `@JSONField(serialize = false)` or `@JSONType(ignores = ...)` is applied.
-
-### Fields are not being deserialized
-
-Check for:
-1. JSON key names must match Java field names (or use `@JSONField(name = "...")` to map).
-2. Enable `SupportSmartMatch` if the JSON uses a different naming convention.
-3. Fields must be `public` or have public setter methods (unless using `FieldBased` feature).
-
-### Getting `ClassNotFoundException` or `AutoType` errors
-
-FASTJSON 2 disables AutoType by default. If your JSON contains `@type` fields:
-1. Use `AutoTypeFilter` with a narrow whitelist for specific classes.
-2. Or enable `SupportAutoType` (not recommended for untrusted input).
-3. Do not use AutoType in internet-facing services.
+Decimals parse as `BigDecimal` by default (no precision loss). If you see float errors, check whether you enabled `UseDoubleForDecimals` / `UseBigDecimalForFloats` explicitly; use `WriteBigDecimalAsPlain` to avoid scientific notation on output.

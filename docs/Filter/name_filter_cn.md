@@ -1,29 +1,15 @@
-# NameFilter
-`FASTJSON`提供了一个序列化时对字段名做处理的扩展叫做`NameFilter`，接口如下
-```java
-package com.alibaba.fastjson2.filter;
+# NameFilter / ContextNameFilter（已移除）
 
-public interface NameFilter
-        extends Filter {
-    String process(Object object, String name, Object value);
-}
-```
+> **精简版已移除该过滤器。** `com.alibaba.fastjson2.filter` 包不存在。
 
-`NameFilter`通过of方法提供了常见需求的实现，比如：
-```java
-public class Bean {
-    public int userId;
-}
+NameFilter / ContextNameFilter 用于在序列化时修改属性名。该功能依赖 JavaBean 序列化流程与反射体系，本库为纯树模型，无 Bean 绑定，该功能已删除。
 
-@Test
-public void test() {
-    Bean bean = new Bean();
-    bean.userId = 101;
+## 替代方案
 
-    NameFilter pascalNameFilter = NameFilter.of(PropertyNamingStrategy.PascalCase);
-    String str = JSON.toJSONString(bean, pascalNameFilter);
-    assertEquals("{\"UserId\":101}", str);
-    JSONObject object = JSON.parseObject(str);
-    assertEquals(101, object.get("UserId"));
-}
-```
+在树模型上直接处理 `JSONObject` / `JSONArray`（遍历 `entrySet()` 修改键名/键值，或 put/remove 控制输出字段）。
+
+## 相关文档
+
+- [过滤器总览](index_cn.md)（已移除说明）
+- [功能总览](../index.md)
+- [精简说明与评估](../精简评估报告.md)

@@ -1,136 +1,19 @@
-# 实现ObjectWriter和ObjectReader实现定制序列化和反序列化
+# 自定义 ObjectReader / ObjectWriter（已移除）
 
-## 1. 实现ObjectWriter接口定制化序列化
+> **精简版已移除该功能。**
 
-## 1.1 ObjectWriter的定义
-```java
-package com.alibaba.fastjson2.writer;
+通过实现 ObjectReader/ObjectWriter 接口并注册到 Provider，定制任意类型的反序列化/序列化 在本仓库中**已不存在**，对应代码与 API 已全部删除。
 
-public interface ObjectWriter<T> {
-    void write(JSONWriter jsonWriter, Object object, Object fieldName, Type fieldType, long features);
-}
-```
+## 为什么移除
 
-## 1.2 实现ObjectWriter举例
-```java
-class InetAddressWriter implements ObjectWriter {
-    InetAddressWriter INSTANCE = new InetAddressWriter();
+本库已裁剪为纯 JSON 树模型（`JSON` / `JSONObject` / `JSONArray`），彻底删除了反射体系（`reader/`、`writer/`、`annotation/`、`filter/` 等 10 个包），该功能依赖的底层机制已不存在。
 
-    @Override
-    public void write(JSONWriter jsonWriter, Object object, Object fieldName, Type fieldType, long features) {
-        if (object == null) {
-            jsonWriter.writeNull();
-            return;
-        }
+## 替代方案
 
-        InetAddress address = (InetAddress) object;
-        // 优先使用name
-        jsonWriter.writeString(address.getHostName());
-    }
-}
-```
+无需替代。reader/writer 包与 Provider 注册机制已移除。树模式下仅支持 JSONObject/JSONArray/Map/List/String/Number/Boolean 等基础类型序列化，其余抛 JSONException。
 
-## 1.3 注册Writer
-```java
-JSON.register(InetAddress.class, InetAddressWriter.INSTANCE);
-JSON.register(Inet4Address.class, InetAddressWriter.INSTANCE);
-JSON.register(Inet6Address.class, InetAddressWriter.INSTANCE);
-```
+## 相关文档
 
-## 1.4 注册ObjectWriters的一些内置实现
-ObjectWriters提供了构造ofToString/ofToInt/ofToLong方法，让使用者能更方便序列化，比如：
-
-```java
- public static class Bean {
-    public int id;
-
-    public String toString() {
-        return Integer.toString(id);
-    }
-
-    public int getId() {
-        return id;
-    }
-}
-
-@Test
-public void testToString() {
-    ObjectWriter objectWriter = ObjectWriters.ofToString(Bean::toString);
-
-    Bean bean = new Bean();
-    bean.id = 101;
-
-    JSONWriter jsonWriter = JSONWriter.of();
-    objectWriter.write(jsonWriter, bean);
-    assertEquals("\"101\"", jsonWriter.toString());
-}
-
-@Test
-public void testToInt() {
-    ObjectWriter<Bean> objectWriter = ObjectWriters.ofToInt(
-            (ToIntFunction<Bean>) Bean::getId
-    );
-
-    Bean bean = new Bean();
-    bean.id = 101;
-
-    JSONWriter jsonWriter = JSONWriter.of();
-    objectWriter.write(jsonWriter, bean);
-    assertEquals("101", jsonWriter.toString());
-}
-```
-
-# 2. 实现ObjectReader定制反序列化
-
-## 2.1 ObjectReader的定义
-```java
-package com.alibaba.fastjson2.reader;
-
-public interface ObjectReader<T> {
-    T readObject(JSONReader jsonReader, Type fieldType, Object fieldName, long features);
-}
-```
-ObjectReader还有很多其他方法，但都提供了缺省实现，上面这个方法是必须实现的。
-
-## 2.2 实现ObjectReader举例
-```java
-import java.time.Instant;
-import com.alibaba.fastjson2.reader.ObjectReader;
-
-class InstantReader implements ObjectReader {
-    public static final InstantReader INSTANCE = new InstantReader();
-    @Override
-    public Object readObject(JSONReader jsonReader, Type fieldType, Object fieldName, long features) {
-        if (jsonReader.nextIfNull()) {
-            return null;
-        }
-
-        long millis = jsonReader.readInt64Value();
-        return Instant.ofEpochMilli(millis);
-    }
-}
-```
-
-## 2.3 注册Reader
-```java
-JSON.register(Instant.class, InstantReader.INSTANCE);
-```
-
-## 2.4 注册内置的ObjectReaders提供的一些内置实现
-ObjectReaders提供了构造ofString/ofInt/ofLong方法，让使用者能更方便反序列化，比如：
-```java
-public static class Bean {
-    final int code;
-    public Bean(String str) {
-        code = Integer.parseInt(str);
-    }
-}
-
-@Test
-public void test() {
-    JSON.register(Bean.class, ObjectReaders.ofString(Bean::new));
-    
-    Bean bean = JSON.parseObject("\"123\"", Bean.class);
-    assertEquals(123, bean.code);
-}
-```
+- [功能总览](index.md)
+- [序列化/反序列化特性](features_cn.md)
+- [精简说明与评估](精简评估报告.md)

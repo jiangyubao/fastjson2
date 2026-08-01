@@ -17,3 +17,5 @@ class JSONReaderUTF8 extends JSONReader {
 
 class JSONReaderASCII extends JSONReaderUTF8 { }
 ```
+
+> **Trimmed-edition note**: This build only supports tree-model parsing - `JSONReader.readAny()` is a hand-written switch recursion building `JSONObject` / `JSONArray` / `String` / `BigDecimal` / `Boolean` directly; no `ObjectReader` Provider, no JavaBean binding. All three implementations above are retained.

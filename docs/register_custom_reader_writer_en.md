@@ -1,136 +1,19 @@
-# Implementing ObjectWriter and ObjectReader for Custom Serialization and Deserialization
+# Custom ObjectReader / ObjectWriter (Removed)
 
-## 1. Implementing the ObjectWriter Interface for Custom Serialization
+> **This feature has been removed in the trimmed build.**
 
-### 1.1 ObjectWriter Definition
-```java
-package com.alibaba.fastjson2.writer;
+Customizing deserialization/serialization of arbitrary types by implementing ObjectReader/ObjectWriter and registering with the Provider **no longer exists** in this repository - the corresponding code and APIs have been deleted.
 
-public interface ObjectWriter<T> {
-    void write(JSONWriter jsonWriter, Object object, Object fieldName, Type fieldType, long features);
-}
-```
+## Why it was removed
 
-### 1.2 ObjectWriter Implementation Example
-```java
-class InetAddressWriter implements ObjectWriter {
-    static final InetAddressWriter INSTANCE = new InetAddressWriter();
+This build was trimmed to a pure JSON tree model (`JSON` / `JSONObject` / `JSONArray`), with the reflection system (10 packages: `reader/`, `writer/`, `annotation/`, `filter/` etc.) fully deleted. The mechanisms this feature depended on no longer exist.
 
-    @Override
-    public void write(JSONWriter jsonWriter, Object object, Object fieldName, Type fieldType, long features) {
-        if (object == null) {
-            jsonWriter.writeNull();
-            return;
-        }
+## Replacement
 
-        InetAddress address = (InetAddress) object;
-        // Prioritize using the name
-        jsonWriter.writeString(address.getHostName());
-    }
-}
-```
+No replacement needed. The reader/writer packages and Provider registration were removed. Only JSONObject/JSONArray/Map/List/String/Number/Boolean are serializable; anything else throws JSONException.
 
-### 1.3 Registering the Writer
-```java
-JSON.register(InetAddress.class, InetAddressWriter.INSTANCE);
-JSON.register(Inet4Address.class, InetAddressWriter.INSTANCE);
-JSON.register(Inet6Address.class, InetAddressWriter.INSTANCE);
-```
+## Related Documents
 
-### 1.4 Registering Some Built-in Implementations of ObjectWriters
-`ObjectWriters` provides `ofToString`/`ofToInt`/`ofToLong` methods to make serialization more convenient for users, for example:
-
-```java
- public static class Bean {
-    public int id;
-
-    public String toString() {
-        return Integer.toString(id);
-    }
-
-    public int getId() {
-        return id;
-    }
-}
-
-@Test
-public void testToString() {
-    ObjectWriter objectWriter = ObjectWriters.ofToString(Bean::toString);
-
-    Bean bean = new Bean();
-    bean.id = 101;
-
-    JSONWriter jsonWriter = JSONWriter.of();
-    objectWriter.write(jsonWriter, bean);
-    assertEquals("\"101\"", jsonWriter.toString());
-}
-
-@Test
-public void testToInt() {
-    ObjectWriter<Bean> objectWriter = ObjectWriters.ofToInt(
-            (ToIntFunction<Bean>) Bean::getId
-    );
-
-    Bean bean = new Bean();
-    bean.id = 101;
-
-    JSONWriter jsonWriter = JSONWriter.of();
-    objectWriter.write(jsonWriter, bean);
-    assertEquals("101", jsonWriter.toString());
-}
-```
-
-# 2. Implementing ObjectReader for Custom Deserialization
-
-## 2.1 ObjectReader Definition
-```java
-package com.alibaba.fastjson2.reader;
-
-public interface ObjectReader<T> {
-    T readObject(JSONReader jsonReader, Type fieldType, Object fieldName, long features);
-}
-```
-`ObjectReader` has many other methods, but they all provide default implementations. The method above must be implemented.
-
-## 2.2 ObjectReader Implementation Example
-```java
-import java.time.Instant;
-import com.alibaba.fastjson2.reader.ObjectReader;
-
-class InstantReader implements ObjectReader {
-    public static final InstantReader INSTANCE = new InstantReader();
-    @Override
-    public Object readObject(JSONReader jsonReader, Type fieldType, Object fieldName, long features) {
-        if (jsonReader.nextIfNull()) {
-            return null;
-        }
-
-        long millis = jsonReader.readInt64Value();
-        return Instant.ofEpochMilli(millis);
-    }
-}
-```
-
-## 2.3 Registering the Reader
-```java
-JSON.register(Instant.class, InstantReader.INSTANCE);
-```
-
-## 2.4 Registering Some Built-in Implementations Provided by ObjectReaders
-`ObjectReaders` provides `ofString`/`ofInt`/`ofLong` methods to make deserialization more convenient for users, for example:
-```java
-public static class Bean {
-    final int code;
-    public Bean(String str) {
-        code = Integer.parseInt(str);
-    }
-}
-
-@Test
-public void test() {
-    JSON.register(Bean.class, ObjectReaders.ofString(Bean::new));
-    
-    Bean bean = JSON.parseObject("\"123\"", Bean.class);
-    assertEquals(123, bean.code);
-}
-```
+- [Overview](index.md)
+- [Serialization/Deserialization Features](features_en.md)
+- [Trim & Evaluation Report](精简评估报告.md)

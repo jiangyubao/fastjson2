@@ -17,3 +17,5 @@ class JSONReaderUTF8 extends JSONReader {
 
 class JSONReaderASCII extends JSONReaderUTF8 { }
 ```
+
+> **精简版说明**：本库仅支持树模型解析——`JSONReader.readAny()` 手写 switch 递归，直接构建 `JSONObject` / `JSONArray` / `String` / `BigDecimal` / `Boolean` 等；不经过任何 `ObjectReader` Provider，无 JavaBean 绑定。上述三个实现类全部保留。

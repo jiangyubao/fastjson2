@@ -1,81 +1,19 @@
-# Using Mixin to Inject Annotations for Custom Serialization and Deserialization
+# MixIn Annotation Injection (Removed)
 
-When you need to customize the serialization of classes from a library whose code you cannot modify, you can use FASTJSON2's Mixin feature to inject annotations.
+> **This feature has been removed in the trimmed build.**
 
-For example:
+MixIn (injecting annotations onto third-party classes without modifying their source) **no longer exists** in this repository - the corresponding code and APIs have been deleted.
 
-## 1. The Class to be Serialized
-```java
-public static class Product {
-    public String name;
-}
-```
+## Why it was removed
 
-## 2. The Mixin Configuration Class
-```java
-public abstract class ProductMixin {
-    @JSONField(name =  "productName")
-    String name;
-}
-```
+This build was trimmed to a pure JSON tree model (`JSON` / `JSONObject` / `JSONArray`), with the reflection system (10 packages: `reader/`, `writer/`, `annotation/`, `filter/` etc.) fully deleted. The mechanisms this feature depended on no longer exist.
 
-## 3. Injecting the Configuration & Usage
-```java
-// Configure injection
-JSON.mixIn(Product.class, ProductMixin.class);
+## Replacement
 
-// Usage
-Product product = new Product();
-product.name = "DataWorks";
-assertEquals("{\"productName\":\"DataWorks\"}", JSON.toJSONString(product));
+No replacement needed. The annotation system was removed; in tree mode all data is JSONObject/JSONArray with no class binding.
 
-Product productParsed = JSON.parseObject("{\"productName\":\"DataWorks\"}", Product.class);
-assertEquals("DataWorks", productParsed.name);
-```
+## Related Documents
 
-## 4. Example with JSONCreator & JSONField(value=true)
-Consider the following `Address` class, which has no default constructor and only one field. We want the serialization result to be the string value of the `address` field.
-```java
-public static class Address {
-    private final String address;
-
-    public Address(String address) {
-        this.address = address;
-    }
-
-    public String getAddress() {
-        return address;
-    }
-}
-```
-
-The injection and usage are as follows:
-```java
-static class AddressMixin {
-    // Specify the constructor with @JSONCreator
-    @JSONCreator
-    public AddressMixin(@JSONField(value = true) String address) {
-    }
-
-    // Configure the output to use this field
-    @JSONField(value = true)
-    public String getAddress() {
-        return null;
-    }
-}
-
-@Test
-public void test() {
-    JSON.mixIn(Address.class, AddressMixin.class); // Inject annotations via mixin
-
-    Address address = new Address("HangZhou");
-
-    // The serialization output is the value of the address field
-    String str = JSON.toJSONString(address); 
-    assertEquals("\"HangZhou\"", str); 
-
-    // The result shows that the constructor specified by @JSONCreator was used
-    Address address1 = JSON.parseObject(str, Address.class);
-    assertEquals(address.getAddress(), address1.getAddress()); 
-}
-```
+- [Overview](index.md)
+- [Serialization/Deserialization Features](features_en.md)
+- [Trim & Evaluation Report](精简评估报告.md)

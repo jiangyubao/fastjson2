@@ -1,22 +1,18 @@
-# FASTJSON 1.x Upgrade Guide
+# Trimmed-Build Differences (vs FASTJSON 1.x / full 2.x)
 
-## 1. Why Upgrade?
-*   **Better Performance**: Overall performance is better than the 1.x version.
-*   **Support for New JDK Features**: Includes support for Records introduced in JDK 14, more native support for Lambda expressions, and GraalVM Native-Image support.
-*   **More Secure**: The autoType whitelist has been completely removed. AutoType is disabled by default, which improves security.
+This repository is a **pure tree-model** build trimmed from fastjson2 2.0.63. This document explains the differences from fastjson 1.x and the full fastjson2 to help migration decisions.
 
-## 2. How to Upgrade
+## 1. Why Trimmed
 
-### 2.1. Version Notes
-This repository is a trimmed fork based on fastjson2 2.0.63. Only the `core` module is kept, providing core JSON serialization and deserialization. It does not include the 1.x compatibility package or other extension modules.
+- The use case only needs the `JSON` text protocol and the `JSONObject` / `JSONArray` tree model (e.g. web front-end data exchange)
+- Removing the reflection system leaves no `reader` / `writer` / annotations / filters / AutoType at runtime - **zero attack surface**
+- Code shrank from 83,275 to 41,018 lines (-51%); jar ~354KB, easy to audit and embed
 
-The recommended upgrade path is to use the new fastjson v2 API.
+## 2. Differences from fastjson 1.x
 
-### 2.2. Upgrading Using the New API
-Using the new API is the recommended upgrade method, as it provides access to more features.
+### 2.1 Package Name
 
-*   **Package Name Change**
-    FASTJSON v2 and v1.x use different package names. The new package name is `com.alibaba.fastjson2`. Because the new package is different, v1.x and v2.x can coexist.
+FASTJSON 2 uses a different package (`com.alibaba.fastjson2`), so it can coexist with 1.x:
 
 ```java
 import com.alibaba.fastjson2.JSON;
@@ -24,76 +20,88 @@ import com.alibaba.fastjson2.JSONObject;
 import com.alibaba.fastjson2.JSONArray;
 ```
 
-*   **Maven Dependency**
-    The `groupId` for the Maven dependency is different from v1.x; it uses the new `groupId` `com.alibaba.fastjson2`.
+### 2.2 Maven Dependency
+
 ```xml
 <dependency>
     <groupId>com.alibaba.fastjson2</groupId>
     <artifactId>fastjson2</artifactId>
-    <version>${fastjson2.version}</version>
+    <version>2.0.63</version>
 </dependency>
 ```
 
-*   **Behavioral Differences**
-    *   AutoType is disabled by default. fastjson 1.x shipped with a whitelist; fastjson 2 has no whitelist at all and must be explicitly enabled.
-    *   All Features are off by default. fastjson 1.x enabled several features by default.
-    *   Circular reference detection is off by default. fastjson 1.x enabled it by default.
-    *   SmartMatch is off by default. fastjson 1.x enabled it by default.
-    *   Method names have changed. For example, `JSON.parse(String)` returns `Object`, while the common v1 parsing entry point now maps to `JSON.parseObject(String, Class)` in v2. The serialization entry point is still `JSON.toJSONString(Object)`.
+### 2.3 Behavioral Differences (Trimmed Build)
 
-## 3. Common Issues
-### 3.1. How to replace the v1 autoType whitelist configuration?
-In v1, the autoType whitelist was configured through a global configuration. In v2, the corresponding functionality is provided by `ObjectReaderProvider`. You can configure the autoType whitelist as follows:
+| Aspect | fastjson 1.x | Trimmed build |
+|------|-------------|--------|
+| Parse entry | `JSON.parseObject(text, Bean.class)` | **Tree API only**: `JSON.parseObject(text)` → `JSONObject` |
+| Serialize entry | `JSON.toJSONString(Object)` | Same (tree model / basic types only) |
+| JavaBean binding | Supported | **Removed** (`toJavaObject` / `toList` / `TypeReference` gone) |
+| Annotations | `@JSONField` etc. | **Removed** |
+| AutoType | Whitelist by default | **Removed** (no `@type` parsing - immune by design) |
+| Circular-reference detection | On by default | Off by default (`ReferenceDetection` rarely needed in tree mode) |
+| SmartMatch | On by default | Removed (exact key matching) |
+| Date/time | Supported | **Removed** (serializing `Date` throws) |
+| Serialization filters | `NameFilter` / `ValueFilter` etc. | **Removed** |
+
+### 2.4 Migrating from 1.x to the Tree Model
+
+If your code heavily uses `JSON.parseObject(text, Bean.class)` / `toJavaObject`, **do not switch to this trimmed build directly** (it will not compile). Options:
+
+1. **Keep using full fastjson2** - retains Bean binding and annotations
+2. **Adopt the tree model** - rewrite as:
+
 ```java
-JSONFactory.getDefaultObjectReaderProvider().addAutoTypeAccept("com.mycompany.xxx");
+// Before
+User user = JSON.parseObject(json, User.class);
+String name = user.getName();
+
+// After (tree mode)
+JSONObject user = JSON.parseObject(json);
+String name = user.getString("name");
 ```
 
-### 3.2. `ObjectSerializer` and `ObjectDeserializer` have been removed. What are the new alternatives?
-FASTJSON v2 has a more comprehensive extension mechanism, as follows:
-*   Annotation Introduction: [annotations_en.md](annotations_en.md)
-*   Feature Introduction: [features_en.md](features_en.md)
-*   Using Mixin to inject Annotations for custom serialization and deserialization: [mixin_en.md](mixin_en.md)
-*   Implementing `ObjectWriter` and `ObjectReader` for custom serialization and deserialization: [register_custom_reader_writer_en.md](register_custom_reader_writer_en.md)
+3. **Write your own conversion layer** - map `JSONObject` → POJO manually on top of the tree model (`JSONObject.get*` + manual assembly)
 
-### 3.3. Common Class Extension Upgrade Mapping
-| fastjson1                                                   | fastjson2                                             |
-|-------------------------------------------------------------|-------------------------------------------------------|
-| com.alibaba.fastjson.parser.deserializer.ExtraProcessor     | com.alibaba.fastjson2.filter.ExtraProcessor           |
-| com.alibaba.fastjson.parser.deserializer.ObjectDeserializer | com.alibaba.fastjson2.reader.ObjectReader             |
-| com.alibaba.fastjson.serializer.AfterFilter                 | com.alibaba.fastjson2.filter.AfterFilter              |
-| com.alibaba.fastjson.serializer.BeforeFilter                | com.alibaba.fastjson2.filter.BeforeFilter             |
-| com.alibaba.fastjson.serializer.ContextValueFilter          | com.alibaba.fastjson2.filter.ContextValueFilter       |
-| com.alibaba.fastjson.serializer.LabelFilter                 | com.alibaba.fastjson2.filter.LabelFilter              |
-| com.alibaba.fastjson.serializer.NameFilter                  | com.alibaba.fastjson2.filter.NameFilter               |
-| com.alibaba.fastjson.serializer.PascalNameFilter            | com.alibaba.fastjson2.filter.PascalNameFilter         |
-| com.alibaba.fastjson.serializer.PropertyFilter              | com.alibaba.fastjson2.filter.PropertyFilter           |
-| com.alibaba.fastjson.serializer.ObjectSerializer            | com.alibaba.fastjson2.writer.ObjectWriter             |
-| com.alibaba.fastjson.serializer.SerializeConfig             | com.alibaba.fastjson2.writer.ObjectWriterProvider     |
-| com.alibaba.fastjson.serializer.ValueFilter                 | com.alibaba.fastjson2.filter.ValueFilter              |
-| com.alibaba.fastjson.serializer.SerializerFeature           | com.alibaba.fastjson2.JSONWriter.Feature              |
-| com.alibaba.fastjson.parser.Feature                         | com.alibaba.fastjson2.JSONReader.Feature              |
+## 3. Differences from Full fastjson2
 
-### 3.4 Alternative for `SerializerFeature.UseISO8601DateFormat` in fastjson2
+| Full 2.x | Trimmed build |
+|-----------|--------|
+| `JSON.parseObject(text, Bean.class)`, generic `TypeReference` | Removed |
+| Annotations `@JSONField` / `@JSONType` / `@JSONCreator` / `@JSONBuilder` | Removed |
+| Custom `ObjectReader` / `ObjectWriter` and Provider registration | Removed |
+| Filters (`NameFilter` / `ValueFilter` / `PropertyFilter` etc.) | Removed |
+| AutoType (`SupportAutoType` / whitelist / SafeMode) | Removed |
+| MixIn annotation injection | Removed |
+| Code generation (ASM / LambdaMetafactory) | Not needed (no Bean binding) |
+| Date/time/UUID (`DateUtils`, `WriterUtilDateAsMillis`) | Removed |
+| `JSONB` / `JSONPath` / `JSON Schema` / `CSV` / Kotlin / Spring / Android extensions | Removed |
+| `JSONReader.Feature` / `JSONWriter.Feature` enums | **Fully retained** (tree-effective entries in [features_en.md](features_en.md)) |
+| `JSON.parse` / `parseObject` / `parseArray` / `toJSONString` / `toJSONBytes` / `writeTo` / `isValid` | **Retained** (all tree APIs public) |
 
-fastjson2's `JSONWriter.Feature` does not have a feature corresponding to `UseISO8601DateFormat`. The alternative is to use `format="iso8601"`, as shown below:
-```java
-import com.alibaba.fastjson2.JSON;
+## 4. FAQ
 
-String format = "iso8601";
-JSON.toJSONString(obj, format);
-```
+### 4.1 How does 1.x `SerializerFeature` map?
 
-### 3.5 Alternative for `SerializerFeature.DisableCircularReferenceDetect` in fastjson2
-In fastjson2, the alternative is `JSONWriter.Feature.ReferenceDetection`, but the semantics are opposite, and the default is different. `JSONWriter.Feature.ReferenceDetection` in fastjson2 is disabled by default, whereas in fastjson1 it was enabled by default.
+1.x `SerializerFeature` → full 2.x `JSONWriter.Feature` → trimmed build (enum retained, partially effective). Common mappings:
 
-### 3.6 Alternative for `SerializerFeature.SortField` in fastjson2
-Not needed. In fastjson2, `JSONObject` inherits from `LinkedHashMap`, so this feature is not necessary.
+| 1.x SerializerFeature | Trimmed JSONWriter.Feature |
+|-----------------------|--------------------------|
+| `WriteMapNullValue` | `WriteMapNullValue` / `WriteNulls` ✅ |
+| `PrettyFormat` | `PrettyFormat` ✅ |
+| `SortField` | `SortMapEntriesByKeys` ✅ (JSONObject is a LinkedHashMap) |
+| `WriteLongAsString` | `WriteLongAsString` ✅ |
+| `WriteDateUseDateFormat` | Not supported (date removed) |
+| `BrowserCompatible` | `BrowserCompatible` ✅ |
 
-### 3.7 Alternative for `SerializerFeature.WriteDateUseDateFormat` in fastjson2
-The default behavior in fastjson2 is to use a date format. To change it to behave like fastjson 1.x (outputting milliseconds), you need to configure `format = "millis"`, as shown below:
-```java
-import com.alibaba.fastjson2.JSON;
+### 4.2 How does 1.x `ExtraProcessor` / `ObjectDeserializer` map?
 
-String format = "millis";
-JSON.toJSONString(obj, format);
-```
+**No equivalent.** The extension mechanism (`filter` / `reader` / `writer` packages) was removed. In tree mode, extra properties naturally remain in the `JSONObject` (`obj.get("extra")`) - no processor needed.
+
+### 4.3 How does the 1.x AutoType whitelist map?
+
+**Nothing to map.** AutoType was fully removed; there is no `@type` deserialization.
+
+### 4.4 How do I disable circular-reference detection like 1.x?
+
+1.x enables circular-reference detection by default. The trimmed build has it off by default (no `ReferenceDetection`), equivalent to 1.x with `DisableCircularReferenceDetect` enabled.

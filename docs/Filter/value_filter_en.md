@@ -1,39 +1,15 @@
-# ValueFilter
-`FASTJSON` provides an extension for processing field values during serialization called `Value-Filter`. The interface is as follows:
-```java
-package com.alibaba.fastjson2.filter;
+# ValueFilter / ContextValueFilter (Removed)
 
-public interface ValueFilter
-extends Filter {
-Object apply(Object object, String name, Object value);
-}
-```
+> **This filter has been removed in the trimmed build.** `com.alibaba.fastjson2.filter` does not exist.
 
-ValueFilter allows you to customize the output value during serialization, for example:
-```java
-public static class Bean {
-    public int id;
-}
+ValueFilter / ContextValueFilter modified property values during serialization. It depended on the JavaBean serialization pipeline and the reflection system; this build is a pure tree model with no Bean binding, so it was deleted.
 
-@Test
-public void test_valuefilterCompose() {
-    ValueFilter filter0 = (source, name, value) -> {
-        if ("id".equals(name)) {
-            return ((Integer) value).intValue() + 1;
-        }
-        return value;
-    };
+## Replacement
 
-    ValueFilter filter1 = (source, name, value) -> {
-        if ("id".equals(name)) {
-            return ((Integer) value).intValue() + 10;
-        }
-        return value;
-    };
+Handle `JSONObject` / `JSONArray` directly in the tree model (iterate `entrySet()` to change keys/values, or put/remove to control output fields).
 
-    Bean bean = new Bean();
-    bean.id = 100;
-    String str = JSON.toJSONString(bean, ValueFilter.compose(filter0, filter1));
-    assertEquals("{\"id\":111}", str);
-}
-```
+## Related Documents
+
+- [Filters Overview](index_en.md) (removed)
+- [Overview](../index.md)
+- [Trim & Evaluation Report](../精简评估报告.md)

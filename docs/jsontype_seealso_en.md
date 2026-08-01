@@ -1,43 +1,19 @@
-In Fastjson, you can use the JSONType#seeAlso annotation for configuration, which is similar to XmlSeeAlso in JAXB. The usage is as follows:
+# @JSONType(seeAlso) (Removed)
 
-### JavaBean Config
-```java
-@JSONType(seeAlso={Dog.class, Cat.class})
-public static class Animal {
-}
+> **This feature has been removed in the trimmed build.**
 
-@JSONType(typeName = "dog")
-public static class Dog extends Animal {
-    public String dogName;
-}
+Configuring polymorphic types via `@JSONType(seeAlso = ...)` **no longer exists** in this repository - the corresponding code and APIs have been deleted.
 
-@JSONType(typeName = "cat")
-public static class Cat extends Animal {
-    public String catName;
-}
-```
+## Why it was removed
 
-#### Usage
-```java
-Dog dog = new Dog();
-dog.dogName = "dog1001";
+This build was trimmed to a pure JSON tree model (`JSON` / `JSONObject` / `JSONArray`), with the reflection system (10 packages: `reader/`, `writer/`, `annotation/`, `filter/` etc.) fully deleted. The mechanisms this feature depended on no longer exist.
 
-String text = JSON.toJSONString(dog, SerializerFeature.WriteClassName);
-Assert.assertEquals("{\"@type\":\"dog\",\"dogName\":\"dog1001\"}", text);
+## Replacement
 
-Dog dog2 = (Dog) JSON.parseObject(text, Animal.class);
+No replacement needed. Annotations and polymorphic binding were removed; store an explicit type field in JSON and branch on it in the tree model if needed.
 
-Assert.assertEquals(dog.dogName, dog2.dogName);
-```
+## Related Documents
 
-```java
-Cat cat = new Cat();
-cat.catName = "cat2001";
-
-String text = JSON.toJSONString(cat, SerializerFeature.WriteClassName);
-Assert.assertEquals("{\"@type\":\"cat\",\"catName\":\"cat2001\"}", text);
-
-Cat cat2 = (Cat) JSON.parseObject(text, Animal.class);
-
-Assert.assertEquals(cat.catName, cat2.catName);
-```
+- [Overview](index.md)
+- [Serialization/Deserialization Features](features_en.md)
+- [Trim & Evaluation Report](精简评估报告.md)

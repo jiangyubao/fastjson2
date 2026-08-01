@@ -1,39 +1,15 @@
-# ValueFilter
-`FASTJSON`提供了一个序列化时对字段名做处理的扩展叫做`ValueFilter`，接口如下
-```java
-package com.alibaba.fastjson2.filter;
+# ValueFilter / ContextValueFilter（已移除）
 
-public interface ValueFilter
-        extends Filter {
-    Object apply(Object object, String name, Object value);
-}
-```
+> **精简版已移除该过滤器。** `com.alibaba.fastjson2.filter` 包不存在。
 
-ValueFilter允许你在输出的时候自定义输出的值，比如：
-```java
-public static class Bean {
-    public int id;
-}
+ValueFilter / ContextValueFilter 用于在序列化时修改属性值。该功能依赖 JavaBean 序列化流程与反射体系，本库为纯树模型，无 Bean 绑定，该功能已删除。
 
-@Test
-public void test_valuefilterCompose() {
-    ValueFilter filter0 = (source, name, value) -> {
-        if ("id".equals(name)) {
-            return ((Integer) value).intValue() + 1;
-        }
-        return value;
-    };
+## 替代方案
 
-    ValueFilter filter1 = (source, name, value) -> {
-        if ("id".equals(name)) {
-            return ((Integer) value).intValue() + 10;
-        }
-        return value;
-    };
+在树模型上直接处理 `JSONObject` / `JSONArray`（遍历 `entrySet()` 修改键名/键值，或 put/remove 控制输出字段）。
 
-    Bean bean = new Bean();
-    bean.id = 100;
-    String str = JSON.toJSONString(bean, ValueFilter.compose(filter0, filter1));
-    assertEquals("{\"id\":111}", str);
-}
-```
+## 相关文档
+
+- [过滤器总览](index_cn.md)（已移除说明）
+- [功能总览](../index.md)
+- [精简说明与评估](../精简评估报告.md)

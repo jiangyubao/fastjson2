@@ -1,135 +1,103 @@
 # Performance Guide
 
-This guide covers tuning strategies and best practices for FASTJSON 2.
+This guide covers tuning strategies and best practices for this trimmed (pure tree-model) build.
 
 ## Performance Architecture
 
-FASTJSON 2 achieves its performance through several key optimizations:
+### 1. Unsafe Bulk Array Reads/Writes
 
-### ASM Code Generation
+The parsing/serialization core uses `Unsafe.putLong` / `getLong` to read/write 8 bytes at a time, bypassing per-element bounds checks on `bytes[i]`. This is the key acceleration for byte-level intensive work (number formatting, string escaping, field-name matching) - roughly 30-60% faster than plain per-byte loops.
 
-At runtime, FASTJSON 2 generates optimized bytecode for object readers and writers using ASM. This eliminates reflection overhead for field access and method invocation. The generated code uses switch-case statements on field name hashes for O(1) field lookup during deserialization.
+- Distribution: `JSONReaderUTF8` (123 sites), `IOUtils` (70), `JSONWriterUTF8` / `JSONWriterUTF16`, ~259 sites in total
+- `sun.misc.Unsafe` has existed from JDK 8 through today and is used heavily by the JDK itself; the IDE "Access restriction" is only static checking - compilation (`-XDignore.symbol.file`) and runtime are unaffected
+- Test code uses public wrappers (`IOUtils.getLongLE` / `getIntLE`) instead of touching Unsafe directly
 
-- **When**: First time a type is serialized/deserialized (one-time cost)
-- **Where**: `ObjectReaderCreatorASM`, `ObjectWriterCreatorASM`
-- **Fallback**: Reflection-based creator when ASM is unavailable (e.g., GraalVM Native Image)
+### 2. Encoding-Specialized Parsers
 
-### Lambda Metafactory
+Dedicated implementations per encoding, selected automatically by input type:
 
-On JDK 8+, FASTJSON 2 uses `LambdaMetafactory` to create high-performance method handles as an alternative to reflection. This provides near-native-call performance for getter/setter invocations.
-
-### String Interning
-
-The `SymbolTable` provides efficient string interning for frequently used field names, reducing memory allocation and GC pressure during parsing.
-
-### Encoding-Specific Parsers
-
-FASTJSON 2 has dedicated parser implementations for different encodings:
-- `JSONReaderUTF8` - optimized for UTF-8 byte streams
+- `JSONReaderUTF8` - optimized for UTF-8 byte streams (character-classification lookup tables)
 - `JSONReaderUTF16` - optimized for UTF-16 (Java String internal representation)
-- `JSONReaderASCII` - fast path for ASCII-only content
+- `JSONReaderASCII` - fast path for pure-ASCII content
 
-The library auto-detects the optimal parser based on input type.
+### 3. Number Lookup Tables and Exact Parsing
+
+- `ED` / `ED5` / `EF` constant tables: integer/float serialization without runtime computation
+- `FDBigInteger` / `MutableBigInteger` / `Scientific`: exact double/float parsing ported from JDK `FloatingDecimal` - no precision loss
+- `Fnv`: FNV-1a 64-bit hash for field-name matching without string comparison
+
+### 4. Hand-Written Recursive Parsing (No Reflection Dispatch)
+
+`JSONReader.readAny()` is a hand-written switch recursion; `JSONWriter.writeAny()` uses instanceof branches - no Provider / reflection layer in between, minimal call overhead.
 
 ## Tuning Strategies
 
-### 1. Prefer byte[] Over String
+### 1. Prefer byte[] over String
 
 **Impact: High**
 
-When possible, work with `byte[]` directly instead of `String`:
-
 ```java
 // Faster: parse from bytes
-byte[] bytes = getJsonBytes(); // from network, file, etc.
-User user = JSON.parseObject(bytes, User.class);
+byte[] bytes = getJsonBytes(); // from network, files, etc.
+JSONObject obj = JSON.parseObject(bytes);
 
 // Faster: serialize to bytes
-byte[] output = JSON.toJSONBytes(user);
+byte[] output = JSON.toJSONBytes(obj);
 ```
 
-This avoids the overhead of String encoding/decoding. It is especially effective for HTTP/RPC scenarios where data arrives as bytes.
+This avoids String encoding/decoding overhead and is especially effective in HTTP/RPC scenarios.
 
-### 2. Use BeanToArray for Compact Serialization
-
-**Impact: Medium**
-
-The `BeanToArray` feature serializes objects as JSON arrays instead of objects, removing field name overhead:
-
-```java
-// Output: [1,"John",25] instead of {"id":1,"name":"John","age":25}
-String json = JSON.toJSONString(user, JSONWriter.Feature.BeanToArray);
-User user = JSON.parseObject(json, User.class, JSONReader.Feature.SupportArrayToBean);
-```
-
-### 3. Minimize Feature Usage
+### 2. Minimize Feature Usage
 
 **Impact: Low-Medium**
 
-Each enabled Feature adds a condition check in the hot path. Only enable features you actually need:
+Each enabled Feature adds a conditional check in the hot path. Enable only what you need:
 
 ```java
-// Good: only enable what you need
-String json = JSON.toJSONString(user, JSONWriter.Feature.WriteNulls);
+// Good: only what's needed
+String json = JSON.toJSONString(obj, JSONWriter.Feature.PrettyFormat);
 
-// Avoid: enabling many features "just in case"
-String json = JSON.toJSONString(user,
-    JSONWriter.Feature.WriteNulls,
+// Avoid: enabling many "just in case" Features
+String json2 = JSON.toJSONString(obj,
     JSONWriter.Feature.PrettyFormat,        // skip if not needed
-    JSONWriter.Feature.ReferenceDetection,  // skip if no circular refs
-    JSONWriter.Feature.MapSortField);       // skip if order doesn't matter
+    JSONWriter.Feature.SortMapEntriesByKeys // skip if ordering doesn't matter
+);
 ```
 
-### 4. Use FieldBased for Maximum Speed
+### 3. Use the UTF8 Fast Path for Pure ASCII
 
 **Impact: Medium**
 
-`FieldBased` mode accesses fields directly instead of through getter/setter methods, which is slightly faster:
+For pure-ASCII content, enable `OptimizedForAscii` to use the `JSONWriterUTF8` implementation:
 
 ```java
-String json = JSON.toJSONString(user, JSONWriter.Feature.FieldBased);
-User user = JSON.parseObject(json, User.class, JSONReader.Feature.FieldBased);
+String json = JSON.toJSONString(obj, JSONWriter.Feature.OptimizedForAscii);
 ```
 
-> Note: This accesses private fields via reflection/ASM, which may not work in all environments.
+### 4. Custom Containers (Optional)
 
-### 5. Cache ObjectReader/ObjectWriter for Custom Types
-
-**Impact: Medium**
-
-If you register custom readers/writers, ensure they are singletons:
-
-```java
-// Good: singleton pattern
-class MoneyWriter implements ObjectWriter<Money> {
-    static final MoneyWriter INSTANCE = new MoneyWriter();
-    // ...
-}
-JSONFactory.getDefaultObjectWriterProvider().register(Money.class, MoneyWriter.INSTANCE);
-```
+For large payloads, `JSONFactory.setDefaultObjectSupplier` / `setDefaultArraySupplier` let you customize the tree-model container implementations (e.g. pre-sized Map/List factories).
 
 ## Thread Safety
 
-Understanding thread safety helps avoid unnecessary synchronization:
-
 | Component | Thread-Safe? | Notes |
-|-----------|:---:|-------|
-| `JSON` static methods | Yes | Main entry point, always safe |
-| `JSONObject` / `JSONArray` | No | Not synchronized, like `HashMap`/`ArrayList` |
-| `JSONReader` / `JSONWriter` | No | Create per-operation, never share across threads |
-| `ObjectReader` / `ObjectWriter` | Yes | After initialization, safe to share |
-| `ObjectReaderProvider` / `ObjectWriterProvider` | Yes | Internal caching is thread-safe |
+|------|:---:|------|
+| `JSON` static methods | Yes | Main entry; no shared mutable state |
+| `JSONObject` / `JSONArray` | No | Un-synchronized, like `HashMap` / `ArrayList` |
+| `JSONReader` / `JSONWriter` | No | Create per operation; do not share across threads |
+| `JSONFactory` static config | Yes (after config) | Configure at startup; read-only afterwards |
+| util static methods | Yes | Stateless (Unsafe read-only constants) |
 
 ## JVM Tuning
 
 ### Recommended JVM Flags
 
 ```
-# Enable compact strings (JDK 9+, on by default)
+# Enable compact strings (JDK 9+, default on)
 -XX:+CompactStrings
 ```
 
-### Memory Considerations
+### Memory Notes
 
-- FASTJSON 2 uses thread-local buffers for serialization, which reduces GC pressure but increases per-thread memory.
-- For applications with many threads, monitor thread-local buffer usage.
+- Decimals are stored as `BigDecimal` by default (precision first); consider `UseDoubleForDecimals` for memory-sensitive large payloads.
+- `JSONObject` is a `LinkedHashMap` preserving insertion order; customize containers if ordering is not needed.

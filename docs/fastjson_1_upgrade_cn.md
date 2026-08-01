@@ -1,22 +1,18 @@
-# FASTJSON 1.x升级指南
+# 精简版差异说明（相对 FASTJSON 1.x / 完整版 2.x）
 
-## 1. 为什么要升级
-* 性能更好，整体性能优于1.x版本
-* 支持JDK新特性，包括JDK 14引入的Record，Lambda表达式的更原生支持，GraalVM Native-Image支持
-* 更安全，完全删除autoType白名单，AutoType缺省关闭，提升安全性
+本仓库是基于 fastjson2 2.0.63 裁剪的**纯树模式**版本。本文档说明它与 fastjson 1.x 以及完整版 fastjson2 的差异，帮助迁移决策。
 
-## 2. 如何升级
+## 1. 为什么精简
 
-### 2.1. 版本说明
-本仓库是基于fastjson2 2.0.63裁剪的版本，仅保留core模块，提供核心的JSON序列化与反序列化功能，不包含1.x兼容包及其它扩展模块。
+- 使用场景仅需要 `JSON` 文本协议与 `JSONObject` / `JSONArray` 树模型（如 Web 前端数据交互）
+- 删除反射体系后，运行时无 `reader` / `writer` / 注解 / 过滤器 / AutoType，**安全攻面清零**
+- 代码量从 83,275 行降至 41,018 行（-51%），jar 约 354KB，便于审计与嵌入
 
-升级方式是使用fastjson v2新的API。
+## 2. 与 fastjson 1.x 的差异
 
-### 2.2. 使用新API升级
-使用新API是建议的升级方式，使用新的API能获得更多的功能。
+### 2.1 包名
 
-* 包名变更
-  `FASTJSON` v2和1.x版本使用不同的package，新的package名称是com.alibaba.fastjson2，新package和之前不同，可以实现1.x和2.x共存
+`FASTJSON 2` 与 1.x 使用不同的 package（`com.alibaba.fastjson2`），可共存：
 
 ```java
 import com.alibaba.fastjson2.JSON;
@@ -24,77 +20,88 @@ import com.alibaba.fastjson2.JSONObject;
 import com.alibaba.fastjson2.JSONArray;
 ```
 
-* Maven依赖
-  Maven依赖的groupId和1.x不同，使用了新的groupId`com.alibaba.fastjson2`
+### 2.2 Maven 依赖
+
 ```xml
 <dependency>
     <groupId>com.alibaba.fastjson2</groupId>
     <artifactId>fastjson2</artifactId>
-    <version>${fastjson2.version}</version>
+    <version>2.0.63</version>
 </dependency>
 ```
 
-* 行为差异
-  * AutoType缺省关闭，1.x默认带白名单，2.x没有任何白名单，必须显式打开
-  * 所有Feature缺省关闭，1.x默认开启多个Feature
-  * 循环引用检测缺省关闭，1.x默认开启
-  * SmartMatch缺省关闭，1.x默认开启
-  * 方法名有调整，例如`JSON.parse(String)`返回Object，1.x中常用的解析入口在2.x中对应`JSON.parseObject(String, Class)`，序列化入口仍是`JSON.toJSONString(Object)`
+### 2.3 行为差异（精简版）
 
-## 3. 常见问题
-### 3.1. 1.x中autoType白名单配置如何替代
-在1.x中，autoType白名单通过全局配置添加；在2.x中，对应的功能由ObjectReaderProvider提供，可以如下的方式配置autoType白名单。
+| 维度 | fastjson 1.x | 精简版 |
+|------|-------------|--------|
+| 解析入口 | `JSON.parseObject(text, Bean.class)` | **仅树 API**：`JSON.parseObject(text)` → `JSONObject` |
+| 序列化入口 | `JSON.toJSONString(Object)` | 同左（仅支持树模型/基础类型） |
+| JavaBean 绑定 | 支持 | **已移除**（`toJavaObject` / `toList` / `TypeReference` 均不存在） |
+| 注解 | `@JSONField` 等 | **已移除** |
+| AutoType | 默认带白名单 | **已移除**（无 `@type` 解析能力，天然免疫） |
+| 循环引用检测 | 默认开启 | 默认关闭（`ReferenceDetection` 树模型下一般无需） |
+| SmartMatch | 默认开启 | 已移除（键名精确匹配） |
+| 日期/时间 | 支持 | **已移除**（序列化 `Date` 抛异常） |
+| 序列化过滤器 | `NameFilter` / `ValueFilter` 等 | **已移除** |
+
+### 2.4 从 1.x 迁移到树模式
+
+如果你的代码大量使用 `JSON.parseObject(text, Bean.class)` / `toJavaObject`，**不建议直接替换为本精简版**（会编译失败）。迁移选项：
+
+1. **继续使用完整版 fastjson2** - 保持 Bean 绑定与注解能力
+2. **改用树模型** - 重写为：
+
 ```java
-JSONFactory.getDefaultObjectReaderProvider().addAutoTypeAccept("com.mycompany.xxx");
+// 之前
+User user = JSON.parseObject(json, User.class);
+String name = user.getName();
+
+// 之后（树模式）
+JSONObject user = JSON.parseObject(json);
+String name = user.getString("name");
 ```
 
-### 3.2. ObjectSerializer 和 ObjectDeserializer 被移除了，有什么新的代替方案
-FASTJSON v2中有比较完善的扩展机制，如下：
-* Annotation介绍 [annotations_cn.md](annotations_cn.md)
-* Feature介绍 [features_cn.md](features_cn.md)
-* 使用Mixin注入Annotation定制序列化和反序列化 [mixin_cn.md](mixin_cn.md)
-* 实现ObjectWriter和ObjectReader实现定制序列化和反序列化 [register_custom_reader_writer_cn.md](register_custom_reader_writer_cn.md)
+3. **自己写转换层** - 在树模型之上自行实现 `JSONObject` → POJO 的映射（常见做法：`JSONObject.get*` + 手动装配）
 
-### 3.3. 常见的类扩展升级映射
-| fastjson1                                                   | fastjson2                                             |
-|-------------------------------------------------------------|-------------------------------------------------------|
-| com.alibaba.fastjson.parser.deserializer.ExtraProcessor     | com.alibaba.fastjson2.filter.ExtraProcessor           |
-| com.alibaba.fastjson.parser.deserializer.ObjectDeserializer | com.alibaba.fastjson2.reader.ObjectReader             |
-| com.alibaba.fastjson.serializer.AfterFilter                 | com.alibaba.fastjson2.filter.AfterFilter              |
-| com.alibaba.fastjson.serializer.BeforeFilter                | com.alibaba.fastjson2.filter.BeforeFilter             |
-| com.alibaba.fastjson.serializer.ContextValueFilter          | com.alibaba.fastjson2.filter.ContextValueFilter       |
-| com.alibaba.fastjson.serializer.LabelFilter                 | com.alibaba.fastjson2.filter.LabelFilter              |
-| com.alibaba.fastjson.serializer.NameFilter                  | com.alibaba.fastjson2.filter.NameFilter               |
-| com.alibaba.fastjson.serializer.PascalNameFilter            | com.alibaba.fastjson2.filter.PascalNameFilter         |
-| com.alibaba.fastjson.serializer.PropertyFilter              | com.alibaba.fastjson2.filter.PropertyFilter           |
-| com.alibaba.fastjson.serializer.ObjectSerializer            | com.alibaba.fastjson2.writer.ObjectWriter             |
-| com.alibaba.fastjson.serializer.SerializeConfig             | com.alibaba.fastjson2.writer.ObjectWriterProvider     |
-| com.alibaba.fastjson.serializer.ValueFilter                 | com.alibaba.fastjson2.filter.ValueFilter              |
-| com.alibaba.fastjson.serializer.SerializerFeature           | com.alibaba.fastjson2.JSONWriter.Feature              |
-| com.alibaba.fastjson.parser.Feature                         | com.alibaba.fastjson2.JSONReader.Feature              |
+## 3. 与完整版 fastjson2 的差异
 
+| 完整版 2.x | 精简版 |
+|-----------|--------|
+| `JSON.parseObject(text, Bean.class)`、泛型 `TypeReference` | 已移除 |
+| 注解 `@JSONField` / `@JSONType` / `@JSONCreator` / `@JSONBuilder` | 已移除 |
+| `ObjectReader` / `ObjectWriter` 自定义与 Provider 注册 | 已移除 |
+| 过滤器（`NameFilter` / `ValueFilter` / `PropertyFilter` 等） | 已移除 |
+| AutoType（`SupportAutoType` / 白名单 / SafeMode） | 已移除 |
+| MixIn 注解注入 | 已移除 |
+| 代码生成（ASM / LambdaMetafactory） | 无 Bean 绑定，无需 |
+| 日期/时间/UUID（`DateUtils`、`WriterUtilDateAsMillis`） | 已移除 |
+| `JSONB` / `JSONPath` / `JSON Schema` / `CSV` / Kotlin / Spring / Android 扩展 | 已移除 |
+| `JSONReader.Feature` / `JSONWriter.Feature` 枚举 | **完整保留**（对树模型生效的项见 [features_cn.md](features_cn.md)） |
+| `JSON.parse` / `parseObject` / `parseArray` / `toJSONString` / `toJSONBytes` / `writeTo` / `isValid` | **保留**（树 API 全部可用，方法为 public） |
 
-### 3.4 SerializerFeature.UseISO8601DateFormat在fastjson2的替代方案
+## 4. 常见问题
 
-fastjson2的JSONWriter.Feature没有和UseISO8601DateFormat的Feature，代替方法是使用format="iso8601"，如下：
-```java
-import com.alibaba.fastjson2.JSON;
+### 4.1 1.x 的 `SerializerFeature` 如何对应？
 
-String format = "iso8601";
-JSON.toJSONString(obj, format);
-```
+1.x 的 `SerializerFeature` → 完整版 2.x 的 `JSONWriter.Feature` → 精简版同（枚举保留，仅部分生效）。常用映射：
 
-### 3.5 SerializerFeature.DisableCircularReferenceDetect在fastjson2的替代方案
-在fastjson2中，代替的是JSONWriter.Feature.ReferenceDetection，但语义相反，缺省不一样。fastjson2中的JSONWriter.Feature.ReferenceDetection缺省是关闭的，而fastjson1缺省是打开的。
+| 1.x SerializerFeature | 精简版 JSONWriter.Feature |
+|-----------------------|--------------------------|
+| `WriteMapNullValue` | `WriteMapNullValue` / `WriteNulls` ✅ |
+| `PrettyFormat` | `PrettyFormat` ✅ |
+| `SortField` | `SortMapEntriesByKeys` ✅（JSONObject 本身 LinkedHashMap 保序） |
+| `WriteLongAsString` | `WriteLongAsString` ✅ |
+| `WriteDateUseDateFormat` | 不支持（日期已移除） |
+| `BrowserCompatible` | `BrowserCompatible` ✅ |
 
-### 3.6 SerializerFeature.SortField在fastjson2的替代方案
-不需要，在fastjson2中，JSONObject继承自LinkedHashMap，不需要配置这个Feature
+### 4.2 1.x 的 `ExtraProcessor` / `ObjectDeserializer` 如何对应？
 
-### 3.7 SerializerFeature.WriteDateUseDateFormat在fastjson2的替代方案
-在fastjson2中的缺省行为就是使用dateFormat，如果要修改为成和fastjson 1.x一样的行为，需要配置format = "millis"，如下：
-```java
-import com.alibaba.fastjson2.JSON;
+**无对应**。扩展机制（`filter` / `reader` / `writer` 包）已整体移除。树模式下多余字段天然保留在 `JSONObject` 中（`obj.get("extra")`），无需处理器。
 
-String format = "millis";
-JSON.toJSONString(obj, format);
-```
+### 4.3 1.x 的 AutoType 白名单如何替代？
+
+**无需替代**。精简版已彻底移除 AutoType，不存在 `@type` 反序列化。
+
+### 4.4 1.x 的循环引用检测如何关闭？
+
+1.x 默认开启循环引用检测。精简版默认关闭（`ReferenceDetection` 默认不启用），行为等同于 1.x 开启 `DisableCircularReferenceDetect`。

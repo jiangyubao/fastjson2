@@ -1,81 +1,19 @@
-# 使用Mixin注入Annotation定制序列化和反序列化
+# MixIn 注解注入（已移除）
 
-当你需要定制化序列化一些LIB里面的类，你无法修改这些类的代码，你可以使用FASTJSON2的Mixin功能注入Annotation。
+> **精简版已移除该功能。**
 
-比如：
+MixIn（将第三方类上的注解映射注入目标类，实现不修改源码的定制序列化/反序列化） 在本仓库中**已不存在**，对应代码与 API 已全部删除。
 
-## 1. 要序列化的类
-```java
-public static class Product {
-    public String name;
-}
-```
+## 为什么移除
 
-## 2. 注入配置类
-```java
-public abstract class ProductMixin {
-    @JSONField(name =  "productName")
-    String name;
-}
-```
+本库已裁剪为纯 JSON 树模型（`JSON` / `JSONObject` / `JSONArray`），彻底删除了反射体系（`reader/`、`writer/`、`annotation/`、`filter/` 等 10 个包），该功能依赖的底层机制已不存在。
 
-## 3. 注入配置 & 使用
-```java
-// 配置注入
-JSON.mixIn(Product.class, ProductMixin.class);
+## 替代方案
 
-// 使用
-Product product = new Product();
-product.name = "DataWorks";
-assertEquals("{\"productName\":\"DataWorks\"}", JSON.toJSONString(product));
+无需替代。注解体系已移除；树模式下所有数据均以 JSONObject/JSONArray 呈现，无类绑定需求。
 
-Product productParsed = JSON.parseObject("{\"productName\":\"DataWorks\"}", Product.class);
-assertEquals("DataWorks", productParsed.name);
-```
+## 相关文档
 
-## 4. 结合JSONCreator & JSONField(value=true)的例子
-如下的Address类，没有缺省构造函数，只有一个字段，我希望序列化结果为address字段的字符串。
-```java
-public static class Address {
-    private final String address;
-
-    public Address(String address) {
-        this.address = address;
-    }
-
-    public String getAddress() {
-        return address;
-    }
-}
-```
-
-注入使用方式如下：
-```java
-static class AddressMixin {
-    // 通过JSONCreator指定构造函数
-    @JSONCreator
-    public AddressMixin(@JSONField(value = true) String address) {
-    }
-
-    // 配置输出使用此字段
-    @JSONField(value = true)
-    public String getAddress() {
-        return null;
-    }
-}
-
-@Test
-public void test() {
-    JSON.mixIn(Address.class, AddressMixin.class); // 通过mixin注入Annotation
-
-    Address address = new Address("HangZhou");
-
-    // 序列化输出结果为address字段
-    String str = JSON.toJSONString(address); 
-    assertEquals("\"HangZhou\"", str); 
-
-    // 通过结果可以看出使用了JSONCreator指定的构造函数
-    Address address1 = JSON.parseObject(str, Address.class);
-    assertEquals(address.getAddress(), address1.getAddress()); 
-}
-```
+- [功能总览](index.md)
+- [序列化/反序列化特性](features_cn.md)
+- [精简说明与评估](精简评估报告.md)

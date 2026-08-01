@@ -1,229 +1,111 @@
-# Fastjson2 Architecture
+# Fastjson2 精简版架构
 
 ## Overview
 
-Fastjson2 is a high-performance JSON library for Java, targeting JDK 8 and later. This document describes the trimmed codebase, which consists of a single `core` module that handles text JSON serialization and deserialization. The library is organized into three layers: the public API, encoding-specific readers and writers, and the object mapping layer that produces `ObjectReader` and `ObjectWriter` instances for Java types.
+本仓库是基于 FASTJSON2 2.0.63 裁剪的 JSON 库（纯树模式），目标是**只提供 `JSON` 文本协议的解析与序列化**，不包含 JavaBean 绑定、反射体系、注解、过滤器与 AutoType。整个代码库仅一个 `core` Maven 模块，共 32 个源文件。
 
-## Project Structure
-
-```
-fastjson2/
-├── core/                      # The library module (JDK 8+); the only Maven module
-├── docs/                      # Documentation (English and Chinese)
-├── src/                       # Build configuration (checkstyle rules, modernizer violations)
-├── scripts/                   # Helper scripts (version bump)
-├── .github/workflows/         # CI workflow (ci.yaml)
-├── pom.xml, mvnw, mvnw.cmd    # Maven build and wrapper
-└── README.md, README_cn.md    # Project readmes
-```
-
-## Core Module Architecture
-
-### Component Overview
+## 架构总览
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│                          JSON API Layer                            │
-│   JSON · JSONObject · JSONArray · JSONFactory · TypeReference      │
-│   JSONReader · JSONWriter · SymbolTable · PropertyNamingStrategy   │
-├────────────────────────────────────────────────────────────────────┤
-│   ┌──────────────────────┐      ┌──────────────────────┐           │
-│   │      Reader Layer     │      │      Writer Layer     │           │
-│   │   JSONReaderUTF8     │      │   JSONWriterUTF8     │           │
-│   │   JSONReaderUTF16    │      │   JSONWriterUTF16    │           │
-│   │   JSONReaderASCII    │      │   (JDK 8/9 variants) │           │
-│   └─────────┬────────────┘      └─────────┬────────────┘           │
-│   ┌─────────┴────────────┐      ┌─────────┴────────────┐           │
-│   │  Object Mapping (r)   │      │  Object Mapping (w)   │           │
-│   │   ObjectReader        │      │   ObjectWriter        │           │
-│   │   ObjectReaderCreator │      │   ObjectWriterCreator │           │
-│   │   ObjectReaderProvider│      │   ObjectWriterProvider│           │
-│   │   ObjectReaderBaseModule      │   ObjectWriterBaseModule        │
-│   └───────────────────────┘      └───────────────────────┘           │
-│   ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐          │
-│   │ Annotations  │  │   Filters    │  │     Utilities     │          │
-│   │  (6 files)  │  │  (19 files)  │  │  BeanUtils       │          │
-│   │  @JSONField │  │  ValueFilter │  │  TypeUtils       │          │
-│   │  @JSONType  │  │  NameFilter  │  │  FieldInfo       │          │
-│   └─────────────┘  └──────────────┘  │  internal.asm    │          │
-│                                      └───────────────────┘          │
-└────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│                      API 层                                 │
+│   JSON（静态入口） · JSONObject · JSONArray                  │
+│   JSONFactory · JSONReader（抽象） · JSONWriter（抽象）      │
+│   JSONException · JSONLargeObjectException                  │
+├────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐          ┌──────────────┐                 │
+│  │  Reader 层    │          │  Writer 层    │                 │
+│  │ JSONReaderUTF8│          │ JSONWriterUTF8│                │
+│  │ JSONReaderUTF16          │ JSONWriterUTF16               │
+│  │ JSONReaderASCII          │ (JDK8/9 变体)                 │
+│  └──────────────┘          └──────────────┘                 │
+│  ┌────────────────────────────────────────┐                 │
+│  │          util 层（解析/格式化内核）        │                 │
+│  │ IOUtils · NumberUtils · TypeUtils · Fnv│                 │
+│  │ JDKUtils · StringUtils · FDBigInteger  │                 │
+│  │ MutableBigInteger · Scientific ·       │                 │
+│  │ ED/ED5/EF（数字查表）· SymbolTable      │                 │
+│  └────────────────────────────────────────┘                 │
+└────────────────────────────────────────────────────────────┘
 ```
 
-### 1. JSON API Layer
+**关键点：没有 Object Mapping 层。** 原版 fastjson2 的 `JSONReader.readAny()` 经由 `ObjectReaderProvider` 动态分派类型解析，`JSONWriter.writeAny()` 经由 `ObjectWriterProvider` 获取类型写入器；本精简版改为：
 
-The public-facing API that users interact with:
+- `JSONReader.readAny()`：手写 `switch` 按首字符递归解析（`{` → 对象，`[` → 数组，`"` → 字符串，数字/`t`/`f`/`n` → 对应类型），直接构建 `JSONObject` / `JSONArray` / `String` / `BigDecimal` / `Boolean` 等
+- `JSONWriter.writeAny()`：`instanceof` 分支写入（`JSONObject` / `JSONArray` / `Map` / `List` / `String` / `Number` / `Boolean`），其余类型抛 `JSONException`
 
-- **`JSON`** - Interface with static entry points (`parseObject`, `parseArray`, `toJSONString`, plus byte-array output overloads)
-- **`JSONObject`** / **`JSONArray`** - `LinkedHashMap<String, Object>` and `ArrayList<Object>` subclasses that keep insertion order
-- **`JSONFactory`** - Owns the default providers, creates read/write contexts, keeps thread-local creator and provider overrides
-- **`JSONReader`** / **`JSONWriter`** (abstract) - Define the parsing and serialization contracts; `JSONReader.of(...)` selects the concrete parser
-- **`TypeReference`** / **`SymbolTable`** - Generic type capture; field-name interning for reuse
-- **`PropertyNamingStrategy`** / **`JSONException`** - Name conversion; base runtime exception
+## 1. API 层
 
-### 2. Reader Layer (Parsing / Deserialization)
+- **`JSON`** - 静态入口：`parse` / `parseObject` / `parseArray` / `toJSONString` / `toJSONBytes` / `writeTo` / `isValid` / `isValidObject` / `isValidArray` / `toJSON`，共 30 个 public 方法
+- **`JSONObject`** - `LinkedHashMap<String, Object>` 子类，保持插入顺序；提供 `getString` / `getInteger` / `getIntValue` / `getLong` / `getBooleanValue` / `getBigDecimal` / `getJSONObject` / `getJSONArray` 等类型化读取
+- **`JSONArray`** - `ArrayList<Object>` 子类；提供对应的按索引类型化读取
+- **`JSONFactory`** - 创建 read/write 上下文；持有数字解析缓存（`NAME_CACHE` / `DIGITS2` / `NIBBLES` / `FLOAT_10_POW` / `DOUBLE_10_POW`）、`defaultDecimalMaxScale` 等静态配置；`setDefaultObjectSupplier` / `setDefaultArraySupplier` 可定制树模型容器
+- **`JSONReader` / `JSONWriter`**（抽象） - 定义解析与序列化契约；`JSONReader.of(...)` 按输入类型选择具体实现
 
-| Class | Input | Notes |
+## 2. Reader 层（解析）
+
+| 类 | 输入 | 说明 |
 |-------|-------|-------|
-| `JSONReaderUTF8` | UTF-8 `byte[]` | Byte-level scanner with character-classification lookup tables |
-| `JSONReaderUTF16` | UTF-16 `byte[]`, `char[]`, `String` | Used for text and UTF-16 inputs |
-| `JSONReaderASCII` | ASCII / ISO-8859-1 `byte[]` | Fast path for ASCII-only content |
+| `JSONReaderUTF8` | UTF-8 `byte[]` | 字节级扫描器，字符分类查表 + `Unsafe` 批量读（性能核心） |
+| `JSONReaderUTF16` | UTF-16 `byte[]`、`char[]`、`String` | 文本与 UTF-16 输入 |
+| `JSONReaderASCII` | ASCII / ISO-8859-1 `byte[]` | 纯 ASCII 快速路径 |
 
-`JSONReader.of(...)` picks the implementation: UTF-8 goes to `JSONReaderUTF8`, ASCII or ISO-8859-1 to `JSONReaderASCII`, UTF-16 and character input to `JSONReaderUTF16`.
+`JSONReader.of(...)` 按输入选择实现：UTF-8 → `JSONReaderUTF8`，ASCII / ISO-8859-1 → `JSONReaderASCII`，UTF-16 与字符输入 → `JSONReaderUTF16`。
 
-### 3. Writer Layer (Serialization)
+## 3. Writer 层（序列化）
 
-| Class | Output | Notes |
+| 类 | 输出 | 说明 |
 |-------|--------|-------|
-| `JSONWriterUTF8` | UTF-8 `byte[]` | Used for byte-array output |
-| `JSONWriterUTF16` | UTF-16 `String` | Used for `toJSONString` |
+| `JSONWriterUTF8` | UTF-8 `byte[]` | `toJSONBytes` 使用 |
+| `JSONWriterUTF16` | UTF-16 `String` | `toJSONString` 使用 |
 
-`JSONWriterUTF16` has runtime variants selected by JDK version: `JSONWriterUTF16JDK8` / `JSONWriterUTF16JDK8UF` for JDK 8, and `JSONWriterUTF16` / `JSONWriterUTF16JDK9UF` for JDK 9+ (the `UF` variants use `Unsafe` field access).
+`JSONWriterUTF16` 按 JDK 版本选择变体：`JSONWriterUTF16JDK8` / `JSONWriterUTF16JDK8UF`（JDK 8），`JSONWriterUTF16` / `JSONWriterUTF16JDK9UF`（JDK 9+，UF 变体使用 `Unsafe` 字段访问）。
 
-### 4. Object Mapping Layer
+## 4. util 层（解析/格式化内核）
 
-#### Reader Package (`com.alibaba.fastjson2.reader`)
-
-| Class | Purpose |
+| 类 | 用途 |
 |-------|---------|
-| `ObjectReader<T>` | Interface for type-specific deserialization |
-| `ObjectReaderCreator` | Builds `ObjectReader` instances; uses `LambdaMetafactory` for constructor and field access |
-| `ObjectReaderProvider` | Owns the reader cache and registered modules; resolves types, handles AutoType |
-| `ObjectReaderBaseModule` | Registers built-in readers for JDK and common types |
-| `ObjectReaders` | Factory helpers for common reader shapes |
-| `ObjectReaderException` | Exception type for deserialization failures |
+| `IOUtils` | 字符串/数字批量读写、LE/BE 批量读取、Latin1 检测、转义 |
+| `NumberUtils` | 整数/浮点序列化（`ED`/`ED5`/`EF` 查表）、`Double.toString` 等价实现 |
+| `TypeUtils` | 类型映射、数字字符串解析、基础转换（已裁剪掉 Bean/日期相关方法） |
+| `Fnv` | FNV-1a 64 位哈希，字段名快速匹配 |
+| `FDBigInteger` / `MutableBigInteger` / `Scientific` | 精确 double/float 解析（JDK `FloatingDecimal` 移植） |
+| `JDKUtils` | `Unsafe` 获取、JDK 版本检测、`String.value` 访问 |
+| `StringUtils` | 字符串工具（ISO-8859-1 等） |
+| `SymbolTable` | 字段名驻留（注意：位于 `com.alibaba.fastjson2` 包，非 util 包） |
 
-The creator produces per-field reader objects via `createFieldReaders(...)` and wraps them in the generated `ObjectReader`; field-level readers are an internal detail, not a named public type.
+## 5. 关键设计决策（与上游差异）
 
-#### Writer Package (`com.alibaba.fastjson2.writer`)
+| 原版 | 精简版 |
+|------|--------|
+| `ObjectReaderProvider` / `ObjectWriterProvider` 类型分派 | 手写 switch / instanceof 分支，无 Provider |
+| `JSON.parseObject(text, Bean.class)` 等泛型 API | 仅树 API：`parseObject(String)` 返回 `JSONObject` |
+| 注解（`@JSONField` 等）控制序列化行为 | 无注解，行为由 Feature 控制 |
+| 过滤器（`NameFilter` / `ValueFilter` 等） | 已删除 |
+| AutoType（`SupportAutoType` Feature + 白名单） | 已删除（枚举中已无相关 Feature） |
+| 日期/时间/UUID 序列化（`DateUtils` 等） | 已删除，遇到抛 `JSONException` |
+| ASM / LambdaMetafactory 代码生成 | 无 Bean 绑定，无需代码生成 |
 
-| Class | Purpose |
-|-------|---------|
-| `ObjectWriter<T>` | Interface for type-specific serialization |
-| `ObjectWriterCreator` | Builds `ObjectWriter` instances with `LambdaMetafactory`-based field access |
-| `ObjectWriterProvider` | Owns the writer cache and registered modules |
-| `ObjectWriterBaseModule` | Registers built-in writers for JDK and common types |
-| `ObjectWriters` | Factory helpers for common writer shapes |
-| `ObjectWriterException` | Exception type for serialization failures |
+## 性能优化手段
 
-The `com.alibaba.fastjson2.modules` package defines the extension interfaces used above: `ObjectReaderModule`, `ObjectWriterModule`, `ObjectCodecProvider`, `ObjectReaderAnnotationProcessor`, and `ObjectWriterAnnotationProcessor`.
+1. **Unsafe 批量数组读写**：`putLong`/`getLong` 一次读写 8 字节，绕过数组边界检查（`JSONReaderUTF8`、`IOUtils`、`JSONWriterUTF8/UTF16` 核心路径）
+2. **编码特化解析器**：UTF-8 / UTF-16 / ASCII 三种实现按输入自动选择
+3. **数字查表**：`ED` / `ED5` / `EF` 常量表 + `Fnv` 哈希，避免运行时计算
+4. **精确 double 解析**：`FDBigInteger` 移植自 JDK `FloatingDecimal`，无精度损失
 
-### 5. Creator Selection Strategy
+## 线程安全
 
-The providers choose how type-specific readers and writers are created:
-
-```
-fastjson2.creator property → "reflect" | "lambda" | "asm" (default "asm")
-Standard JDK (8+)          → LambdaMetafactory-based accessors, JIT enabled
-Dalvik-based runtime or    → JIT disabled (detected via JDKUtils)
-GraalVM native image
-SafeMode                   → AutoType resolution disabled
-```
-
-- `JSONFactory.CREATOR` reads the `fastjson2.creator` system property; the provider switch handles `"reflect"`, `"lambda"`, and `"asm"` alike, and every branch resolves to the same `ObjectReaderCreator` / `ObjectWriterCreator` class.
-- `ObjectReaderCreator.JIT` is enabled unless the runtime is Dalvik-based or GraalVM (both detected by `JDKUtils`); JIT mode builds constructor suppliers and typed functions through `LambdaMetafactory` with a trusted lookup.
-- SafeMode, enabled through the `fastjson.parser.safeMode` or `fastjson2.parser.safeMode` property, makes `ObjectReaderProvider` return null for unresolvable AutoType names.
-
-### 6. Annotation Layer (`com.alibaba.fastjson2.annotation`)
-
-| Annotation | Target | Purpose |
-|------------|--------|---------|
-| `@JSONField` | Method, Field, Parameter | Field-level config (name, format, features, ordinal) |
-| `@JSONType` | Type | Class-level config (naming, ignores, features, ordering) |
-| `@JSONCreator` | Method, Constructor | Marks a deserialization constructor or factory method |
-| `@JSONBuilder` | Type | Marks a builder class for builder-based deserialization |
-| `@JSONCompiler` | Type, Method, Constructor | Compiler hint for reader/writer generation |
-| `@JSONCompiled` | Any | Marks types with precompiled readers/writers |
-
-### 7. Filter Layer (`com.alibaba.fastjson2.filter`)
-
-The filter package contains 19 classes:
-
-- Serialization filters: `AfterFilter`, `BeforeFilter`, `BeanContext`, `CompositeLabelFilter`, `CompositePropertyFilter`, `CompositePropertyPreFilter`, `ContextNameFilter`, `ContextValueFilter`, `Filter`, `LabelFilter`, `Labels`, `NameFilter`, `PascalNameFilter`, `PropertyFilter`, `PropertyPreFilter`, `SimplePropertyPreFilter`, `ValueFilter`
-- Deserialization filters: `ContextAutoTypeBeforeHandler` (AutoType validation), `ExtraProcessor` (extra properties)
-
-## Key Design Patterns
-
-### Factory Pattern
-- `JSONFactory` creates read/write contexts and owns the default providers
-- `ObjectReaderCreator` / `ObjectWriterCreator` create type-specific readers and writers
-
-### Provider Pattern
-- `ObjectReaderProvider` / `ObjectWriterProvider` cache readers and writers in `ConcurrentMap`s, each own a `CopyOnWriteArrayList` of modules, and create on first access
-
-### Strategy Pattern
-- `JSONReader` / `JSONWriter` implementations for different encodings and output formats
-- The `fastjson2.creator` property selects the creator strategy (all values resolve to one creator class in this build)
-
-### Module Pattern
-- `ObjectReaderModule` / `ObjectWriterModule` register custom type handlers and annotation processors
-- The base modules register built-in readers and writers for JDK and common types
-
-## Performance Optimizations
-
-### 1. LambdaMetafactory Accessors
-- `ObjectReaderCreator` / `ObjectWriterCreator` build constructor suppliers and field accessors through `LambdaMetafactory` with a trusted lookup, avoiding per-call reflection
-
-### 2. Symbol Table
-- `SymbolTable` interns field names on first encounter and reuses them across parses, cutting allocation and GC pressure
-
-### 3. Thread-Local Creators and Providers
-- `JSONFactory` keeps thread-local `ObjectReaderCreator`, `ObjectReaderProvider`, and `ObjectWriterCreator` slots so per-thread overrides never touch the shared defaults
-
-### 4. Parser Fast Paths
-- Byte classification tables in `JSONReaderUTF8`, an ASCII-only shortcut in `JSONReaderASCII`, and JDK-version-specific `JSONWriterUTF16` variants
-
-## Thread Safety
-
-| Component | Thread-Safe? | Notes |
+| 组件 | 线程安全？ | 说明 |
 |-----------|:---:|-------|
-| `JSON` static methods | Yes | Main entry point; delegates to providers |
-| `JSONObject` / `JSONArray` | No | Like `HashMap` / `ArrayList` |
-| `JSONReader` / `JSONWriter` | No | Create per operation |
-| `ObjectReader` / `ObjectWriter` | Yes | After initialization |
-| `ObjectReaderProvider` / `ObjectWriterProvider` | Yes | `ConcurrentMap` caches, `CopyOnWriteArrayList` modules |
-| `JSONFactory` | Yes | Static defaults plus thread-local overrides |
+| `JSON` 静态方法 | 是 | 无共享可变状态 |
+| `JSONObject` / `JSONArray` | 否 | 同 `HashMap` / `ArrayList` |
+| `JSONReader` / `JSONWriter` | 否 | 每次操作创建，勿跨线程共享 |
+| `JSONFactory` 静态配置 | 是（配置后） | 启动时配置，运行期只读 |
+| util 层静态方法 | 是 | 无状态（`Unsafe` 只读常量） |
 
-## Extension Points
+## 构建
 
-### 1. Module System
-- `ObjectReaderModule` / `ObjectWriterModule` (plus `ObjectCodecProvider` and the two annotation processors) are registered via `JSONFactory.getDefaultObjectReaderProvider().register(module)` and the writer provider equivalent
-
-### 2. Custom ObjectReader / ObjectWriter
-- Implement `ObjectReader<T>` / `ObjectWriter<T>` and register with `ObjectReaderProvider.register(Type, ObjectReader)` / `ObjectWriterProvider.register(Type, ObjectWriter)`
-
-### 3. Filters
-- Passed to `toJSONString` overloads for value transformation, renaming, and property filtering per call
-
-### 4. MixIn Annotations
-- `ObjectReaderProvider.mixIn(target, mixinSource)` / `ObjectWriterProvider.mixIn(target, mixinSource)` inject annotations on third-party classes without modifying their source
-
-### 5. AutoType Handlers
-- `JSONReader.autoTypeFilter(...)` whitelists types per call; `ObjectReaderProvider.addAutoTypeAccept(String)` extends the global accept list; `ContextAutoTypeBeforeHandler` validates type names before resolution
-
-## Module Dependencies
-
-The repository contains a single Maven module, `core` (JDK 8+), with no internal dependencies; everything else comes from the root POM.
-
-## Build System
-
-- **Build tool**: Maven via the `mvnw` wrapper; multi-module layout with one module (`core`)
-- **Java baseline**: JDK 8 (`maven.compiler.source` / `target` = 8)
-- **ASM**: A self-contained ASM implementation is embedded at `com.alibaba.fastjson2.internal.asm` for bytecode-level support
-- **Testing**: JUnit 5 (via the JUnit BOM, version 5.13.4)
-- **Code style**: Checkstyle (`src/checkstyle/fastjson2-checks.xml`); modernizer checks (`src/violations.xml`)
-- **CI**: GitHub Actions runs the suite on JDK 8/11/17/21/25 across Ubuntu, Windows, and macOS (JDK 25 excluded on macOS), in both the default creator mode and the `fastjson2.creator=reflect` mode
-
-## Documentation
-
-- [Features Reference](features_en.md) - All `JSONReader` / `JSONWriter` features (Chinese: features_cn.md)
-- [Annotations Guide](annotations_en.md) - `@JSONField`, `@JSONType`, `@JSONCreator` (Chinese: annotations_cn.md)
-- [Reader Design](design_jsonreader_en.md) / [Writer Design](design_jsonwriter_en.md) - Layer internals (Chinese: design_jsonreader_cn.md, design_jsonwriter_cn.md)
-- [AutoType Security](autotype_en.md) - AutoType mechanism and configuration (Chinese: autotype_cn.md)
-- [MixIn Annotations](mixin_en.md) - Inject annotations on third-party classes (Chinese: mixin_cn.md)
-- [Custom Reader/Writer](register_custom_reader_writer_en.md) - Implement custom `ObjectReader` / `ObjectWriter` (Chinese: register_custom_reader_writer_cn.md)
-- [Filter System](Filter/index_en.md) - Serialization filters (Chinese: Filter/index_cn.md)
-- [JSONType @seealso](jsontype_seealso_en.md) - Polymorphic type configuration (Chinese: jsontype_seealso_cn.md)
-- [Performance Guide](performance_en.md) - Tuning tips (Chinese: performance_cn.md)
-- [FAQ](FAQ_en.md) - Frequently asked questions (Chinese: FAQ_cn.md)
-- [v1 to v2 Migration](fastjson_1_upgrade_en.md) - Upgrade guide (Chinese: fastjson_1_upgrade_cn.md)
+- **构建工具**: Maven（`mvnw` wrapper），单模块 `core`
+- **Java 基线**: JDK 8（`maven.compiler.source` / `target` = 8）
+- **编译参数**: `-XDignore.symbol.file`（允许访问 `sun.misc.Unsafe` 等内部 API）
+- **测试**: JUnit 5（130+ 用例，覆盖树 API 全功能与数字解析边界）

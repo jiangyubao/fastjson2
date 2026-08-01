@@ -11,3 +11,5 @@ class JSONWriterUTF8 extends JSONWriter { }
 
 class JSONWriterUTF16 extends JSONWriter { }
 ```
+
+> **精简版说明**：`JSONWriter.writeAny()` 使用 instanceof 分支写入（`JSONObject` / `JSONArray` / `Map` / `List` / `String` / `Number` / `Boolean`），其余类型抛 `JSONException`；不经过任何 `ObjectWriter` Provider。`JSONWriterUTF8` / `JSONWriterUTF16` 及 JDK8/9 变体全部保留。

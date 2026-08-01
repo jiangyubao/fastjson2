@@ -10,3 +10,5 @@ class JSONWriterUTF8 extends JSONWriter { }
 
 class JSONWriterUTF16 extends JSONWriter { }
 ```
+
+> **Trimmed-edition note**: `JSONWriter.writeAny()` uses instanceof branches (`JSONObject` / `JSONArray` / `Map` / `List` / `String` / `Number` / `Boolean`); anything else throws `JSONException`; no `ObjectWriter` Provider. `JSONWriterUTF8` / `JSONWriterUTF16` and the JDK 8/9 variants are all retained.
