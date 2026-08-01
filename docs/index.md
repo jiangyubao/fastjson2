@@ -8,7 +8,7 @@
 - `JSONObject` / `JSONArray` 树模型（继承 `LinkedHashMap<String, Object>` / `ArrayList<Object>`）
 - 手写递归解析器（`JSONReader.readAny`）与 instanceof 分支序列化（`JSONWriter.writeAny`），不依赖任何 `ObjectReader` / `ObjectWriter` Provider
 - 完整 `JSONReader.Feature` / `JSONWriter.Feature` 枚举（对树模型生效的项见 [features_cn.md](features_cn.md)）
-- 数字高精度解析：`BigDecimal` / `BigInteger` / 科学计数法 / `FDBigInteger` 精确 double 解析
+- 数字高精度解析：`BigDecimal` / `BigInteger` 精确转换,double/float 走 ED/ED5/EF 查表无精度损失
 - 单引号字符串、非引号字段名等宽松语法兼容
 
 已移除：

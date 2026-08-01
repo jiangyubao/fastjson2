@@ -22,7 +22,7 @@
 │  ┌────────────────────────────────────────┐                 │
 │  │          util 层（解析/格式化内核）        │                 │
 │  │ IOUtils · NumberUtils · Fnv          │                 │
-│  │ JDKUtils · StringUtils · FDBigInteger  │                 │
+│  │ JDKUtils · StringUtils              │                 │
 │  │ MutableBigInteger · Scientific ·       │                 │
 │  │ ED/ED5/EF（数字查表）· SymbolTable      │                 │
 │  └────────────────────────────────────────┘                 │
@@ -69,7 +69,7 @@
 | `NumberUtils` | 整数/浮点序列化（`ED`/`ED5`/`EF` 查表）、`Double.toString` 等价实现 |
 | `TypeUtils` | 类型映射、数字字符串解析、基础转换（已裁剪掉 Bean/日期相关方法） |
 | `Fnv` | FNV-1a 64 位哈希，字段名快速匹配（**保留**：被 JSONReader 三子类与 SymbolTable 调用 37 处，与 AutoType 无关） |
-| `FDBigInteger` / `MutableBigInteger` / `Scientific` | 精确 double/float 解析（JDK `FloatingDecimal` 移植） |
+| `MutableBigInteger` / `Scientific` | 精确 double/float 解析（配合 ED/ED5/EF 查表） |
 | `JDKUtils` | `Unsafe` 获取、JDK 版本检测、`String.value` 访问 |
 | `StringUtils` | 字符串工具（ISO-8859-1 等） |
 | `SymbolTable` | 字段名驻留（注意：位于 `com.alibaba.fastjson2` 包，非 util 包） |
@@ -91,7 +91,7 @@
 1. **Unsafe 批量数组读写**：`putLong`/`getLong` 一次读写 8 字节，绕过数组边界检查（`JSONReaderUTF8`、`IOUtils`、`JSONWriterUTF8/UTF16` 核心路径）
 2. **编码特化解析器**：UTF-8 / UTF-16 / ASCII 三种实现按输入自动选择
 3. **数字查表**：`ED` / `ED5` / `EF` 常量表 + `Fnv` 哈希，避免运行时计算
-4. **精确 double 解析**：`FDBigInteger` 移植自 JDK `FloatingDecimal`，无精度损失
+4. **精确 double 解析**：`Scientific` + ED/ED5/EF 查表 + `MutableBigInteger`，无精度损失
 
 ## 线程安全
 

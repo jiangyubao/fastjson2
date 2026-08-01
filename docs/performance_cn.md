@@ -25,7 +25,7 @@
 ### 3. 数字查表与精确解析
 
 - `ED` / `ED5` / `EF` 常量表：整数/浮点序列化查表，避免运行时计算
-- `FDBigInteger` / `MutableBigInteger` / `Scientific`：移植自 JDK `FloatingDecimal` 的精确 double/float 解析，无精度损失
+- `MutableBigInteger` / `Scientific`：精确 double/float 解析（配合 ED/ED5/EF 查表），无精度损失
 - `Fnv`：FNV-1a 64 位哈希，字段名快速匹配免字符串比较
 
 ### 4. 手写递归解析（无反射分派）

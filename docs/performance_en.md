@@ -23,7 +23,7 @@ Dedicated implementations per encoding, selected automatically by input type:
 ### 3. Number Lookup Tables and Exact Parsing
 
 - `ED` / `ED5` / `EF` constant tables: integer/float serialization without runtime computation
-- `FDBigInteger` / `MutableBigInteger` / `Scientific`: exact double/float parsing ported from JDK `FloatingDecimal` - no precision loss
+- `MutableBigInteger` / `Scientific`: exact double/float parsing (with ED/ED5/EF lookup tables) - no precision loss
 - `Fnv`: FNV-1a 64-bit hash for field-name matching without string comparison
 
 ### 4. Hand-Written Recursive Parsing (No Reflection Dispatch)
