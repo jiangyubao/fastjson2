@@ -840,18 +840,6 @@ public class JSONArray
      */
 
     /**
-     * @since 2.0.9
-     */
-
-    /**
-     * Convert this {@link JSONArray} to the specified Object
-     *
-     * @param type specify the {@link Type} to be converted
-     * @deprecated since 2.0.4, please use {@link #to(Type)}
-     */
-    @Deprecated
-
-    /**
      * Convert all the members of this {@link JSONArray} into the specified Object.
      *
      * <pre>{@code
