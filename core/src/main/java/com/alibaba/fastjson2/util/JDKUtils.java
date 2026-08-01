@@ -5,17 +5,14 @@ import sun.misc.Unsafe;
 
 import java.lang.invoke.*;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteOrder;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.*;
 
 import static java.lang.invoke.MethodType.methodType;
 
-@SuppressWarnings({"rawtypes", "unchecked", "restriction", "sunapi"})
+@SuppressWarnings({"rawtypes", "restriction", "sunapi"})
 public class JDKUtils {
     public static final Unsafe UNSAFE;
     public static final long ARRAY_BYTE_BASE_OFFSET;
@@ -36,20 +33,14 @@ public class JDKUtils {
     public static final long FIELD_STRING_CODER_OFFSET;
     public static volatile boolean FIELD_STRING_CODER_ERROR;
 
-    static final Class<?> CLASS_SQL_DATASOURCE;
-    static final Class<?> CLASS_SQL_ROW_SET;
-    public static final boolean HAS_SQL;
     public static final boolean ANDROID;
     public static final boolean GRAAL;
     public static final boolean OPENJ9;
     public static final int ANDROID_SDK_INT;
 
     // Android not support
-    public static final Class CLASS_TRANSIENT;
     public static final boolean BIG_ENDIAN;
 
-    public static final boolean VECTOR_SUPPORT;
-    public static final int VECTOR_BIT_LENGTH;
 
     // GraalVM not support
     // Android not support
@@ -66,8 +57,6 @@ public class JDKUtils {
     static volatile MethodHandle CONSTRUCTOR_LOOKUP;
     static volatile boolean CONSTRUCTOR_LOOKUP_ERROR;
     static volatile Throwable initErrorLast;
-    static volatile Throwable reflectErrorLast;
-    static final AtomicInteger reflectErrorCount = new AtomicInteger();
 
     static {
         Unsafe unsafe;
@@ -121,28 +110,6 @@ public class JDKUtils {
         ANDROID = android;
         GRAAL = false;
         ANDROID_SDK_INT = android_sdk_int;
-
-        boolean hasJavaSql = true;
-        Class dataSourceClass = null;
-        Class rowSetClass = null;
-        try {
-            dataSourceClass = Class.forName("javax.sql.DataSource");
-            rowSetClass = Class.forName("javax.sql.RowSet");
-        } catch (Throwable ignored) {
-            hasJavaSql = false;
-        }
-        CLASS_SQL_DATASOURCE = dataSourceClass;
-        CLASS_SQL_ROW_SET = rowSetClass;
-        HAS_SQL = hasJavaSql;
-
-        Class transientClass = null;
-        if (!android) {
-            try {
-                transientClass = Class.forName("java.beans.Transient");
-            } catch (Throwable ignored) {
-            }
-        }
-        CLASS_TRANSIENT = transientClass;
 
         JVM_VERSION = jvmVersion;
 
@@ -242,33 +209,6 @@ public class JDKUtils {
         }
         IMPL_LOOKUP = trustedLookup;
 
-        int vector_bit_length = -1;
-        boolean vector_support = false;
-        try {
-            if (JVM_VERSION >= 11) {
-                Class<?> factorClass = Class.forName("java.lang.management.ManagementFactory");
-                Class<?> runtimeMXBeanClass = Class.forName("java.lang.management.RuntimeMXBean");
-                Method getRuntimeMXBean = factorClass.getMethod("getRuntimeMXBean");
-                Object runtimeMXBean = getRuntimeMXBean.invoke(null);
-                Method getInputArguments = runtimeMXBeanClass.getMethod("getInputArguments");
-                List<String> inputArguments = (List<String>) getInputArguments.invoke(runtimeMXBean);
-                vector_support = inputArguments.contains("--add-modules=jdk.incubator.vector");
-
-                if (vector_support) {
-                    Class<?> byteVectorClass = Class.forName("jdk.incubator.vector.ByteVector");
-                    Class<?> vectorSpeciesClass = Class.forName("jdk.incubator.vector.VectorSpecies");
-                    Field speciesMax = byteVectorClass.getField("SPECIES_MAX");
-                    Object species = speciesMax.get(null);
-                    Method lengthMethod = vectorSpeciesClass.getMethod("length");
-                    int length = (Integer) lengthMethod.invoke(species);
-                    vector_bit_length = length * 8;
-                }
-            }
-        } catch (Throwable e) {
-            initErrorLast = e;
-        }
-        VECTOR_SUPPORT = vector_support;
-        VECTOR_BIT_LENGTH = vector_bit_length;
 
         {
             Predicate<byte[]> isAscii = null;
@@ -445,15 +385,7 @@ public class JDKUtils {
         STRING_VALUE = stringValue;
     }
 
-    public static boolean isSQLDataSourceOrRowSet(Class<?> type) {
-        return (CLASS_SQL_DATASOURCE != null && CLASS_SQL_DATASOURCE.isAssignableFrom(type))
-                || (CLASS_SQL_ROW_SET != null && CLASS_SQL_ROW_SET.isAssignableFrom(type));
-    }
 
-    public static void setReflectErrorLast(Throwable error) {
-        reflectErrorCount.incrementAndGet();
-        reflectErrorLast = error;
-    }
 
     public static char[] getCharArray(String str) {
         // GraalVM not support
@@ -514,11 +446,4 @@ public class JDKUtils {
         return STRING_CREATOR_JDK8.apply(chars, Boolean.TRUE);
     }
 
-    public static String latin1StringJDK8(byte[] bytes, int offset, int strlen) {
-        char[] chars = new char[strlen];
-        for (int i = 0; i < strlen; ++i) {
-            chars[i] = (char) (bytes[offset + i] & 0xff);
-        }
-        return STRING_CREATOR_JDK8.apply(chars, Boolean.TRUE);
-    }
 }

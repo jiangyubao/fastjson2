@@ -20,7 +20,7 @@ import static com.alibaba.fastjson2.JSONFactory.*;
 import static com.alibaba.fastjson2.JSONWriter.Feature.*;
 import static com.alibaba.fastjson2.util.IOUtils.*;
 import static com.alibaba.fastjson2.util.JDKUtils.*;
-import static com.alibaba.fastjson2.util.TypeUtils.*;
+import static com.alibaba.fastjson2.util.IOUtils.isInt64;
 
 @SuppressWarnings({"restriction", "deprecation", "sunapi"})
 class JSONWriterUTF16
@@ -65,7 +65,7 @@ class JSONWriterUTF16
     protected final long byteVectorQuote;
 
     JSONWriterUTF16(Context ctx) {
-        super(ctx, null, false, StandardCharsets.UTF_16);
+        super(ctx, false, StandardCharsets.UTF_16);
         int cacheIndex = System.identityHashCode(Thread.currentThread()) & (CACHE_ITEMS.length - 1);
         cacheItem = CACHE_ITEMS[cacheIndex];
         char[] chars = CHARS_UPDATER.getAndSet(cacheItem, null);

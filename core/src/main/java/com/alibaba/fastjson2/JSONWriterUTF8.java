@@ -19,7 +19,7 @@ import static com.alibaba.fastjson2.JSONFactory.*;
 import static com.alibaba.fastjson2.JSONWriter.Feature.*;
 import static com.alibaba.fastjson2.util.IOUtils.*;
 import static com.alibaba.fastjson2.util.JDKUtils.*;
-import static com.alibaba.fastjson2.util.TypeUtils.isInt64;
+import static com.alibaba.fastjson2.util.IOUtils.isInt64;
 
 @SuppressWarnings("restriction")
 final class JSONWriterUTF8
@@ -40,7 +40,7 @@ final class JSONWriterUTF8
     private final long byteVectorQuote;
 
     JSONWriterUTF8(Context ctx) {
-        super(ctx, null, false, StandardCharsets.UTF_8);
+        super(ctx, false, StandardCharsets.UTF_8);
         int cacheIndex = System.identityHashCode(Thread.currentThread()) & (CACHE_ITEMS.length - 1);
         cacheItem = CACHE_ITEMS[cacheIndex];
         byte[] bytes = BYTES_UPDATER.getAndSet(cacheItem, null);

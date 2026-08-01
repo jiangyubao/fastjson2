@@ -8,7 +8,7 @@ import java.time.temporal.TemporalAccessor;
 import java.util.*;
 
 import static com.alibaba.fastjson2.JSONObject.NONE_DIRECT_FEATURES;
-import static com.alibaba.fastjson2.util.TypeUtils.toBigDecimal;
+import static com.alibaba.fastjson2.util.IOUtils.toBigDecimal;
 
 @SuppressWarnings("unchecked")
 public class JSONArray

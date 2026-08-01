@@ -19,7 +19,10 @@ import java.util.function.Supplier;
 import static com.alibaba.fastjson2.JSONFactory.*;
 import static com.alibaba.fastjson2.JSONReader.BigIntegerCreator.BIG_INTEGER_CREATOR;
 import static com.alibaba.fastjson2.util.JDKUtils.*;
-import static com.alibaba.fastjson2.util.TypeUtils.*;
+import static com.alibaba.fastjson2.util.IOUtils.toBigDecimal;
+import static com.alibaba.fastjson2.util.IOUtils.toDoubleValue;
+import static com.alibaba.fastjson2.util.IOUtils.toIntValue;
+import static com.alibaba.fastjson2.util.IOUtils.toLongValue;
 
 /**
  * JSONReader is the core class for reading and parsing JSON data in FASTJSON2.
@@ -2373,7 +2376,7 @@ public abstract class JSONReader
             }
         } else {
             object = context.objectSupplier.get();
-            innerMap = TypeUtils.getInnerMap(object);
+            innerMap = object;
         }
 
         for (; ; ) {
@@ -3029,7 +3032,7 @@ public abstract class JSONReader
 
     protected final int toInt32(String val) {
         if (IOUtils.isNumber(val) || val.lastIndexOf(',') == val.length() - 4) {
-            return TypeUtils.toIntValue(val);
+            return toIntValue(val);
         }
 
         throw error("parseInt error, value : " + val);
@@ -3038,7 +3041,7 @@ public abstract class JSONReader
     protected final long toInt64(String val) {
         if (IOUtils.isNumber(val)
                 || val.lastIndexOf(',') == val.length() - 4) {
-            return TypeUtils.toLongValue(val);
+            return toLongValue(val);
         }
 
         throw error("parseLong error, value : " + val);
@@ -3734,7 +3737,6 @@ public abstract class JSONReader
         Supplier<Map> objectSupplier;
         Supplier<List> arraySupplier;
 
-        final SymbolTable symbolTable;
 
         /**
          * Creates a new Context with the specified features.
@@ -3745,7 +3747,6 @@ public abstract class JSONReader
             this.features = defaultReaderFeatures;
             this.objectSupplier = JSONFactory.defaultObjectSupplier;
             this.arraySupplier = JSONFactory.defaultArraySupplier;
-            this.symbolTable = null;
             this.zoneId = defaultReaderZoneId;
 
             String format = defaultReaderFormat;
@@ -3768,7 +3769,6 @@ public abstract class JSONReader
             this.features = defaultReaderFeatures;
             this.objectSupplier = JSONFactory.defaultObjectSupplier;
             this.arraySupplier = JSONFactory.defaultArraySupplier;
-            this.symbolTable = null;
             this.zoneId = defaultReaderZoneId;
 
             String format = defaultReaderFormat;

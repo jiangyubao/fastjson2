@@ -2,7 +2,6 @@ package com.alibaba.fastjson2;
 
 import com.alibaba.fastjson2.util.Fnv;
 import com.alibaba.fastjson2.util.IOUtils;
-import com.alibaba.fastjson2.util.TypeUtils;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -2016,9 +2015,9 @@ final class JSONReaderUTF16
             int c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15;
             switch (nameLength) {
                 case 1:
-                    return TypeUtils.toString(chars[nameBegin]);
+                    return IOUtils.toString(chars[nameBegin]);
                 case 2:
-                    return TypeUtils.toString(chars[nameBegin], chars[nameBegin + 1]);
+                    return IOUtils.toString(chars[nameBegin], chars[nameBegin + 1]);
                 case 3:
                     c0 = chars[nameBegin];
                     c1 = chars[nameBegin + 1];
@@ -2748,36 +2747,9 @@ final class JSONReaderUTF16
                 ch = offset == end ? EOI : chars[offset++];
             }
 
-            int expValue;
             if (result <= 0) {
                 if (ch == 'e' || ch == 'E') {
-                    boolean negativeExp;
-                    ch = offset == end ? EOI : chars[offset++];
-                    if ((negativeExp = (ch == '-')) || ch == '+') {
-                        ch = offset == end ? EOI : chars[offset++];
-                    } else if (ch == ',') {
-                        throw numberError();
-                    }
-                    if (IOUtils.isDigit(ch)) {
-                        expValue = ch - '0';
-                        while (offset < end
-                                && IOUtils.isDigit((ch = chars[offset]))
-                        ) {
-                            d = ch - '0';
-                            expValue = expValue * 10 + d;
-                            if (expValue > MAX_EXP) {
-                                throw new JSONException("too large exp value : " + expValue);
-                            }
-                            offset++;
-                        }
-                        if (negativeExp) {
-                            expValue = -expValue;
-                        }
-                        scale -= expValue;
-                        ch = offset == end ? EOI : chars[offset++];
-                    } else {
-                        result = 1; // invalid
-                    }
+                    throw new JSONException("not support exponent number");
                 }
 
                 if (ch == 'L' || ch == 'F' || ch == 'D' || ch == 'B' || ch == 'S') {
@@ -2810,7 +2782,7 @@ final class JSONReaderUTF16
                 }
                 if (!value) {
                     if (scale > 0 && scale < 64) {
-                        doubleValue = TypeUtils.doubleValue(fc == '-' ? -1 : 1, Math.abs(result), scale);
+                        doubleValue = IOUtils.doubleValue(fc == '-' ? -1 : 1, Math.abs(result), scale);
                     } else {
                         result = 1; // invalid
                     }
@@ -2926,36 +2898,9 @@ final class JSONReaderUTF16
                 ch = offset == end ? EOI : chars[offset++];
             }
 
-            int expValue;
             if (result <= 0) {
                 if (ch == 'e' || ch == 'E') {
-                    boolean negativeExp;
-                    ch = offset == end ? EOI : chars[offset++];
-                    if ((negativeExp = (ch == '-')) || ch == '+') {
-                        ch = offset == end ? EOI : chars[offset++];
-                    } else if (ch == ',') {
-                        throw numberError();
-                    }
-                    if (IOUtils.isDigit(ch)) {
-                        expValue = ch - '0';
-                        while (offset < end
-                                && IOUtils.isDigit((ch = chars[offset]))
-                        ) {
-                            d = ch - '0';
-                            expValue = expValue * 10 + d;
-                            if (expValue > MAX_EXP) {
-                                throw new JSONException("too large exp value : " + expValue);
-                            }
-                            offset++;
-                        }
-                        if (negativeExp) {
-                            expValue = -expValue;
-                        }
-                        scale -= expValue;
-                        ch = offset == end ? EOI : chars[offset++];
-                    } else {
-                        result = 1; // invalid
-                    }
+                    throw new JSONException("not support exponent number");
                 }
 
                 if (ch == 'L' || ch == 'F' || ch == 'D' || ch == 'B' || ch == 'S') {
@@ -2988,7 +2933,7 @@ final class JSONReaderUTF16
                 }
                 if (!value) {
                     if (scale > 0 && scale < 128) {
-                        floatValue = TypeUtils.floatValue(fc == '-' ? -1 : 1, Math.abs(result), scale);
+                        floatValue = IOUtils.floatValue(fc == '-' ? -1 : 1, Math.abs(result), scale);
                     } else {
                         result = 1; // invalid
                     }
@@ -3407,28 +3352,7 @@ final class JSONReaderUTF16
             }
 
             if (ch == 'e' || ch == 'E') {
-                ch = bytes[offset++];
-
-                boolean eSign = false;
-                if (ch == '+' || ch == '-') {
-                    eSign = true;
-                    if (offset < end) {
-                        ch = bytes[offset++];
-                    } else {
-                        throw numberError(offset, ch);
-                    }
-                }
-
-                if (ch >= '0' && ch <= '9') {
-                    for (; offset < end; offset++) {
-                        if ((ch = bytes[offset]) < '0' || ch > '9') {
-                            break;
-                        }
-                    }
-                    ch = offset == end ? EOI : bytes[offset++];
-                } else if (eSign) {
-                    throw numberError(offset, ch);
-                }
+                throw new JSONException("not support exponent number");
             }
 
             if (ch == 'F' || ch == 'D') {
@@ -3962,40 +3886,7 @@ final class JSONReaderUTF16
         }
 
         if (ch == 'e' || ch == 'E') {
-            boolean negativeExp = false;
-            int expValue = 0;
-            ch = chars[offset++];
-
-            if (ch == '-') {
-                negativeExp = true;
-                ch = chars[offset++];
-            } else if (ch == '+') {
-                ch = chars[offset++];
-            }
-
-            while (ch >= '0' && ch <= '9') {
-                valid = true;
-                int byteVal = (ch - '0');
-                expValue = expValue * 10 + byteVal;
-                if (expValue > MAX_EXP) {
-                    throw new JSONException("too large exp value : " + expValue);
-                }
-
-                if (offset == end) {
-                    ch = EOI;
-                    break;
-                }
-                ch = chars[offset++];
-            }
-
-            if (negativeExp) {
-                expValue = -expValue;
-            }
-
-            this.exponent = (short) expValue;
-            if (valueType != JSON_TYPE_BIG_DEC) {
-                valueType = JSON_TYPE_DEC;
-            }
+            throw new JSONException("not support exponent number");
         }
 
         if (valueType == JSON_TYPE_BIG_DEC) {
@@ -4302,34 +4193,7 @@ final class JSONReaderUTF16
 
         int expValue = 0;
         if (ch == 'e' || ch == 'E') {
-            boolean negativeExp;
-            ch = chars[offset++];
-            if ((negativeExp = ch == '-') || ch == '+') {
-                ch = chars[offset++];
-            }
-
-            while (ch >= '0' && ch <= '9') {
-                valid = true;
-                int byteVal = (ch - '0');
-                expValue = expValue * 10 + byteVal;
-                if (expValue > MAX_EXP) {
-                    throw new JSONException("too large exp value : " + expValue);
-                }
-
-                if (offset == end) {
-                    ch = EOI;
-                    offset++;
-                    break;
-                }
-                ch = chars[offset++];
-            }
-
-            if (negativeExp) {
-                expValue = -expValue;
-            }
-
-            this.exponent = (short) expValue;
-            valueType = JSON_TYPE_DEC;
+            throw new JSONException("not support exponent number");
         }
 
         if (offset == start) {
@@ -4381,7 +4245,7 @@ final class JSONReaderUTF16
             if (ch != quote) {
                 String str = readString();
                 try {
-                    return TypeUtils.toBigDecimal(str);
+                    return IOUtils.toBigDecimal(str);
                 } catch (NumberFormatException e) {
                     throw new JSONException(info("cast to decimal error " + str), e);
                 }
@@ -4396,7 +4260,7 @@ final class JSONReaderUTF16
             }
 
             if (!value) {
-                decimal = TypeUtils.parseBigDecimal(chars, start - 1, len);
+                decimal = IOUtils.parseBigDecimal(chars, start - 1, len);
             }
 
             if (ch == 'L' || ch == 'F' || ch == 'D' || ch == 'B' || ch == 'S') {

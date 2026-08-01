@@ -63,15 +63,17 @@ public class JSONTreeAPITest {
 
     @Test
     public void parseNumberBoundaries() {
-        JSONObject obj = JSON.parseObject("{\"min\":-9223372036854775808,\"max\":9223372036854775807,\"d\":0.1,\"big\":123456789012345678901234567890,\"sci\":1e10,\"neg\":-0.001}");
+        JSONObject obj = JSON.parseObject("{\"min\":-9223372036854775808,\"max\":9223372036854775807,\"d\":0.1,\"big\":123456789012345678901234567890,\"neg\":-0.001}");
 
         assertEquals(Long.MIN_VALUE, obj.getLong("min"));
         assertEquals(Long.MAX_VALUE, obj.getLong("max"));
         assertEquals(0.1, obj.getDouble("d"));
         // 超出 long 范围的整数 -> BigInteger
         assertEquals(new BigInteger("123456789012345678901234567890"), obj.getBigInteger("big"));
-        assertEquals(1e10, obj.getDouble("sci"));
         assertEquals(-0.001, obj.getDouble("neg"));
+
+        // 科学计数法不支持(精简版移除指数写法)
+        assertThrows(JSONException.class, () -> JSON.parseObject("{\"v\":1e10}"));
     }
 
     @Test

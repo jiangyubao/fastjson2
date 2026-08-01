@@ -3,7 +3,6 @@ package com.alibaba.fastjson2;
 import com.alibaba.fastjson2.util.Fnv;
 import com.alibaba.fastjson2.util.IOUtils;
 import com.alibaba.fastjson2.util.JDKUtils;
-import com.alibaba.fastjson2.util.TypeUtils;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -999,9 +998,9 @@ final class JSONReaderASCII
             int length = nameEnd - nameBegin;
             switch (length) {
                 case 1:
-                    return TypeUtils.toString(bytes[nameBegin]);
+                    return IOUtils.toString(bytes[nameBegin]);
                 case 2:
-                    return TypeUtils.toString(
+                    return IOUtils.toString(
                             bytes[nameBegin],
                             bytes[nameBegin + 1]
                     );

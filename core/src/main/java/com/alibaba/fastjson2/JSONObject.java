@@ -17,7 +17,7 @@ import java.util.function.Function;
 import static com.alibaba.fastjson2.JSONWriter.Feature.*;
 import static com.alibaba.fastjson2.util.JDKUtils.ANDROID;
 import static com.alibaba.fastjson2.util.JDKUtils.GRAAL;
-import static com.alibaba.fastjson2.util.TypeUtils.toBigDecimal;
+import static com.alibaba.fastjson2.util.IOUtils.toBigDecimal;
 
 @SuppressWarnings({"unchecked", "deprecation"})
 public class JSONObject

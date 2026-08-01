@@ -1,7 +1,6 @@
 package com.alibaba.fastjson2;
 
 import com.alibaba.fastjson2.util.IOUtils;
-import com.alibaba.fastjson2.util.TypeUtils;
 
 import java.io.*;
 import java.lang.reflect.GenericArrayType;
@@ -19,7 +18,7 @@ import java.util.*;
 import static com.alibaba.fastjson2.JSONFactory.*;
 import static com.alibaba.fastjson2.JSONWriter.Feature.*;
 import static com.alibaba.fastjson2.util.JDKUtils.*;
-import static com.alibaba.fastjson2.util.TypeUtils.isJavaScriptSupport;
+import static com.alibaba.fastjson2.util.IOUtils.isJavaScriptSupport;
 
 /**
  * JSONWriter is the core class for writing and serializing Java objects to JSON format in FASTJSON2.
@@ -72,7 +71,6 @@ public abstract class JSONWriter
     public final boolean utf16;
     public final boolean jsonb;
     public final boolean useSingleQuote;
-    public final SymbolTable symbolTable;
 
     protected final Charset charset;
     protected final char quote;
@@ -90,12 +88,10 @@ public abstract class JSONWriter
 
     protected JSONWriter(
             Context context,
-            SymbolTable symbolTable,
             boolean jsonb,
             Charset charset
     ) {
         this.context = context;
-        this.symbolTable = symbolTable;
         this.charset = charset;
         this.jsonb = jsonb;
         this.utf8 = !jsonb && charset == StandardCharsets.UTF_8;
@@ -170,10 +166,6 @@ public abstract class JSONWriter
      *
      * @return the symbol table, or null if not set
      */
-    public final SymbolTable getSymbolTable() {
-        return symbolTable;
-    }
-
     /**
      * Configures features for this JSONWriter.
      *
@@ -2193,29 +2185,6 @@ public abstract class JSONWriter
     public abstract void writeBigInt(BigInteger value, long features);
 
 
-    /**
-     * Checks if type name should be written for the given object and writes it if necessary.
-     * This method is used when the WriteClassName feature is enabled to conditionally include
-     * type information in the serialized JSON based on various criteria such as class type,
-     * feature settings, and object relationships.
-     *
-     * @param object the object being serialized
-     * @param fieldClass the expected field class type
-     */
-    public final void checkAndWriteTypeName(Object object, Class fieldClass) {
-        long features = context.features;
-        Class objectClass;
-        if ((features & WriteClassName.mask) == 0
-                || object == null
-                || (objectClass = object.getClass()) == fieldClass
-                || ((features & NotWriteHashMapArrayListClassName.mask) != 0 && (objectClass == HashMap.class || objectClass == ArrayList.class))
-                || ((features & NotWriteRootClassName.mask) != 0 && object == this.rootObject)
-        ) {
-            return;
-        }
-
-        writeTypeName(TypeUtils.getTypeName(objectClass));
-    }
 
     /**
      * Writes a type name for the current object.

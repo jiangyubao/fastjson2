@@ -3347,9 +3347,9 @@ class JSONReaderUTF8
                 long nameValue0 = -1, nameValue1 = -1;
                 switch (length) {
                     case 1:
-                        return TypeUtils.toString((char) (bytes[nameBegin] & 0xff));
+                        return IOUtils.toString((char) (bytes[nameBegin] & 0xff));
                     case 2:
-                        return TypeUtils.toString(
+                        return IOUtils.toString(
                                 (char) (bytes[nameBegin] & 0xff),
                                 (char) (bytes[nameBegin + 1] & 0xff)
                         );
@@ -3823,36 +3823,9 @@ class JSONReaderUTF8
                 ch = offset == end ? EOI : bytes[offset++];
             }
 
-            int expValue;
             if (result <= 0) {
                 if (ch == 'e' || ch == 'E') {
-                    boolean negativeExp;
-                    ch = offset == end ? EOI : bytes[offset++];
-                    if ((negativeExp = (ch == '-')) || ch == '+') {
-                        ch = offset == end ? EOI : bytes[offset++];
-                    } else if (ch == ',') {
-                        throw numberError();
-                    }
-                    if (IOUtils.isDigit(ch)) {
-                        expValue = ch - '0';
-                        while (offset < end
-                                && IOUtils.isDigit((ch = bytes[offset]))
-                        ) {
-                            d = ch - '0';
-                            expValue = expValue * 10 + d;
-                            if (expValue > MAX_EXP) {
-                                throw new JSONException("too large exp value : " + expValue);
-                            }
-                            offset++;
-                        }
-                        if (negativeExp) {
-                            expValue = -expValue;
-                        }
-                        scale -= expValue;
-                        ch = offset == end ? EOI : bytes[offset++];
-                    } else {
-                        result = 1; // invalid
-                    }
+                    throw new JSONException("not support exponent number");
                 }
 
                 if (ch == 'L' || ch == 'F' || ch == 'D' || ch == 'B' || ch == 'S') {
@@ -3885,7 +3858,7 @@ class JSONReaderUTF8
                 }
                 if (!value) {
                     if (scale > 0 && scale < 64) {
-                        doubleValue = TypeUtils.doubleValue(fc == '-' ? -1 : 1, Math.abs(result), scale);
+                        doubleValue = doubleValue(fc == '-' ? -1 : 1, Math.abs(result), scale);
                     } else {
                         result = 1; // invalid
                     }
@@ -4001,36 +3974,9 @@ class JSONReaderUTF8
                 ch = offset == end ? EOI : bytes[offset++];
             }
 
-            int expValue;
             if (result <= 0) {
                 if (ch == 'e' || ch == 'E') {
-                    boolean negativeExp;
-                    ch = offset == end ? EOI : bytes[offset++];
-                    if ((negativeExp = (ch == '-')) || ch == '+') {
-                        ch = offset == end ? EOI : bytes[offset++];
-                    } else if (ch == ',') {
-                        throw numberError();
-                    }
-                    if (IOUtils.isDigit(ch)) {
-                        expValue = ch - '0';
-                        while (offset < end
-                                && IOUtils.isDigit((ch = bytes[offset]))
-                        ) {
-                            d = ch - '0';
-                            expValue = expValue * 10 + d;
-                            if (expValue > MAX_EXP) {
-                                throw new JSONException("too large exp value : " + expValue);
-                            }
-                            offset++;
-                        }
-                        if (negativeExp) {
-                            expValue = -expValue;
-                        }
-                        scale -= expValue;
-                        ch = offset == end ? EOI : bytes[offset++];
-                    } else {
-                        result = 1; // invalid
-                    }
+                    throw new JSONException("not support exponent number");
                 }
 
                 if (ch == 'L' || ch == 'F' || ch == 'D' || ch == 'B' || ch == 'S') {
@@ -4063,7 +4009,7 @@ class JSONReaderUTF8
                 }
                 if (!value) {
                     if (scale > 0 && scale < 128) {
-                        floatValue = TypeUtils.floatValue(fc == '-' ? -1 : 1, Math.abs(result), scale);
+                        floatValue = floatValue(fc == '-' ? -1 : 1, Math.abs(result), scale);
                     } else {
                         result = 1; // invalid
                     }
@@ -4258,40 +4204,7 @@ class JSONReaderUTF8
         }
 
         if (ch == 'e' || ch == 'E') {
-            boolean negativeExp = false;
-            int expValue = 0;
-            ch = bytes[offset++];
-
-            if (ch == '-') {
-                negativeExp = true;
-                ch = bytes[offset++];
-            } else if (ch == '+') {
-                ch = (char) bytes[offset++];
-            }
-
-            while (ch >= '0' && ch <= '9') {
-                valid = true;
-                int byteVal = (ch - '0');
-                expValue = expValue * 10 + byteVal;
-                if (expValue > MAX_EXP) {
-                    throw new JSONException("too large exp value : " + expValue);
-                }
-
-                if (offset == end) {
-                    ch = EOI;
-                    break;
-                }
-                ch = bytes[offset++];
-            }
-
-            if (negativeExp) {
-                expValue = -expValue;
-            }
-
-            this.exponent = (short) expValue;
-            if (valueType != JSON_TYPE_BIG_DEC) {
-                valueType = JSON_TYPE_DEC;
-            }
+            throw new JSONException("not support exponent number");
         }
 
         if (valueType == JSON_TYPE_BIG_DEC) {

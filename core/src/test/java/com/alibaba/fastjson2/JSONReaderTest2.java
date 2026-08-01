@@ -916,10 +916,9 @@ public class JSONReaderTest2 {
     @Test
     public void skipValueNumber4() {
         String str = "1.34e123";
-        JSONReader.of(str.toCharArray())
-                .skipValue();
-        JSONReader.of(str.getBytes(StandardCharsets.UTF_8))
-                .skipValue();
+        // 精简版不支持科学计数法
+        assertThrows(JSONException.class, () -> JSONReader.of(str.toCharArray()).skipValue());
+        assertThrows(JSONException.class, () -> JSON.parse(str));
     }
 
     @Test

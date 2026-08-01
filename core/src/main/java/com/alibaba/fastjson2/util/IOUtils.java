@@ -6,7 +6,14 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.math.BigInteger;
+import java.text.NumberFormat;
+import java.text.ParseException;
 import java.time.LocalTime;
+import java.util.Collection;
+import java.util.Map;
 
 import static com.alibaba.fastjson2.util.JDKUtils.*;
 
@@ -3107,4 +3114,529 @@ public class IOUtils {
         }
         throw new NumberFormatException(new String(buf, start, len));
     }
+
+    // ========== 以下从 TypeUtils 迁移(树模式仍被调用的数字/类型工具) ==========
+
+    static final long LONG_JAVASCRIPT_LOW = -9007199254740991L;
+    static final long LONG_JAVASCRIPT_HIGH = 9007199254740991L;
+
+    public static final BigInteger
+            BIGINT_INT32_MIN = BigInteger.valueOf(Integer.MIN_VALUE),
+            BIGINT_INT32_MAX = BigInteger.valueOf(Integer.MAX_VALUE),
+            BIGINT_INT64_MIN = BigInteger.valueOf(Long.MIN_VALUE),
+            BIGINT_INT64_MAX = BigInteger.valueOf(Long.MAX_VALUE),
+            BIGINT_JAVASCRIPT_LOW = BigInteger.valueOf(LONG_JAVASCRIPT_LOW),
+            BIGINT_JAVASCRIPT_HIGH = BigInteger.valueOf(LONG_JAVASCRIPT_HIGH);
+
+    /**
+     * All the positive powers of 10 that can be
+     * represented exactly in double/float.
+     */
+    public static final double[] SMALL_10_POW = {
+            1.0e0, 1.0e1, 1.0e2, 1.0e3, 1.0e4,
+            1.0e5, 1.0e6, 1.0e7, 1.0e8, 1.0e9,
+            1.0e10, 1.0e11, 1.0e12, 1.0e13, 1.0e14,
+            1.0e15, 1.0e16, 1.0e17, 1.0e18, 1.0e19,
+            1.0e20, 1.0e21, 1.0e22
+    };
+
+    static final float[] SINGLE_SMALL_10_POW = {
+            1.0e0f, 1.0e1f, 1.0e2f, 1.0e3f, 1.0e4f,
+            1.0e5f, 1.0e6f, 1.0e7f, 1.0e8f, 1.0e9f,
+            1.0e10f
+    };
+
+    static final double[] BIG_10_POW = {
+            1e16, 1e32, 1e64, 1e128, 1e256};
+    static final double[] TINY_10_POW = {
+            1e-16, 1e-32, 1e-64, 1e-128, 1e-256};
+
+    public static String toString(char ch) {
+        if (ch < X2.chars.length) {
+            return X2.chars[ch];
+        }
+        return Character.toString(ch);
+    }
+
+    public static String toString(byte ch) {
+        if (ch >= 0 && ch < X2.chars.length) {
+            return X2.chars[ch];
+        }
+        return new String(new byte[]{ch}, StandardCharsets.ISO_8859_1);
+    }
+
+    public static String toString(char c0, char c1) {
+        if (c0 >= X2.START && c0 <= X2.END && c1 >= X2.START && c1 <= X2.END) {
+            int value = (c0 - X2.START) * X2.SIZE2 + (c1 - X2.START);
+            return X2.chars2[value];
+        }
+        return new String(new char[]{c0, c1});
+    }
+
+    public static String toString(byte c0, byte c1) {
+        if (c0 >= X2.START && c0 <= X2.END && c1 >= X2.START && c1 <= X2.END) {
+            int value = (c0 - X2.START) * X2.SIZE2 + (c1 - X2.START);
+            return X2.chars2[value];
+        }
+        return new String(new byte[]{c0, c1}, StandardCharsets.ISO_8859_1);
+    }
+
+
+
+    static class X2 {
+        static final String[] chars;
+        static final String[] chars2;
+        static final char START = ' '; // 32
+        static final char END = '~'; // 126
+        static final int SIZE2 = (END - START + 1);
+
+        static {
+            String[] array0 = new String[128];
+            for (char i = 0; i < array0.length; i++) {
+                array0[i] = Character.toString(i);
+            }
+            chars = array0;
+
+            String[] array1 = new String[SIZE2 * SIZE2];
+            char[] c2 = new char[2];
+            for (char i = START; i <= END; i++) {
+                for (char j = START; j <= END; j++) {
+                    int value = (i - START) * SIZE2 + (j - START);
+                    c2[0] = i;
+                    c2[1] = j;
+                    array1[value] = new String(c2);
+                }
+            }
+            chars2 = array1;
+        }
+    }
+
+    static char[] toAsciiCharArray(byte[] bytes) {
+        char[] charArray = new char[bytes.length];
+        for (int i = 0; i < bytes.length; i++) {
+            charArray[i] = (char) bytes[i];
+        }
+        return charArray;
+    }
+
+
+
+
+
+    private static final int P_D = 53; // Double.PRECISION
+    private static final int Q_MIN_D = -1074; //(Double.MIN_EXPONENT - (P_D - 1));
+    private static final int Q_MAX_D = 971; // (Double.MAX_EXPONENT - (P_D - 1));
+    private static final double L = 3.321928094887362;
+    private static final int P_F = 24;
+    private static final int Q_MIN_F = -149;
+    private static final int Q_MAX_F = 104;
+
+    public static double doubleValue(int signNum, long intCompact, int scale) {
+        int bitLength = 64 - Long.numberOfLeadingZeros(intCompact);
+        long qb = bitLength - (long) Math.ceil(scale * L);
+        if (qb < Q_MIN_D - 2) {  // qb < -1_076
+            return signNum * 0.0;
+        }
+        if (qb > Q_MAX_D + P_D + 1) {  // qb > 1_025
+            /* If s <= -309 then qb >= 1_027, so these cases all end up here. */
+            return signNum * Double.POSITIVE_INFINITY;
+        }
+
+        if (scale == 0) {
+            return signNum * (double) intCompact;
+        }
+
+        int ql = (int) qb - (P_D + 3);  // narrowing qb to an int is safe
+        long i = MutableBigInteger.divideKnuthLong(intCompact, ql, scale);
+
+        int dq = (Long.SIZE - (P_D + 2)) - Long.numberOfLeadingZeros(i);
+        int eq = (Q_MIN_D - 2) - ql;
+        if (dq >= eq) {
+            return signNum * Math.scalb((double) (i | 1), ql);
+        }
+
+        /* Subnormal */
+        long mask = (1L << eq) - 1;
+        long j = i >> eq | Long.signum(i & mask) | 1;
+        return signNum * Math.scalb((double) j, Q_MIN_D - 2);
+    }
+
+
+    public static float floatValue(int signNum, long intCompact, int scale) {
+        int bitLength = 64 - Long.numberOfLeadingZeros(intCompact);
+        long qb = bitLength - (long) Math.ceil(scale * L);
+        if (qb < Q_MIN_F - 2) {  // qb < -151
+            return signNum * 0.0f;
+        }
+        if (qb > Q_MAX_F + P_F + 1) {  // qb > 129
+            return signNum * Float.POSITIVE_INFINITY;
+        }
+        if (scale == 0) {
+            return signNum * (float) intCompact;
+        }
+
+        int ql = (int) qb - (P_F + 3);  // narrowing qb to an int is safe
+        int i = (int) MutableBigInteger.divideKnuthLong(intCompact, ql, scale);
+
+        int sb = intCompact == 0 ? 0 : 1;
+        int dq = (Integer.SIZE - (P_F + 2)) - Integer.numberOfLeadingZeros(i);
+        int eq = (Q_MIN_F - 2) - ql;
+        if (dq >= eq) {
+            return signNum * Math.scalb((float) (i | sb), ql);
+        }
+        int mask = (1 << eq) - 1;
+        int j = i >> eq | (Integer.signum(i & mask)) | sb;
+        return signNum * Math.scalb((float) j, Q_MIN_F - 2);
+    }
+
+    public static BigDecimal toBigDecimal(Object value) {
+        if (value == null || value instanceof BigDecimal) {
+            return (BigDecimal) value;
+        }
+
+        if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
+            return BigDecimal.valueOf(((Number) value).longValue());
+        }
+
+        if (value instanceof String) {
+            String str = (String) value;
+            if (str.isEmpty() || "null".equals(str)) {
+                return null;
+            }
+            return new BigDecimal(str);
+        }
+
+        if (value instanceof BigInteger) {
+            return new BigDecimal((BigInteger) value);
+        }
+
+        if (value instanceof Float || value instanceof Double) {
+            return BigDecimal.valueOf(((Number) value).doubleValue());
+        }
+
+        throw new JSONException("can not cast to BigDecimal from " + value.getClass());
+    }
+
+    public static BigDecimal toBigDecimal(long i) {
+        return BigDecimal.valueOf(i);
+    }
+
+    public static BigDecimal toBigDecimal(float f) {
+        return BigDecimal.valueOf(f);
+    }
+
+    public static BigDecimal toBigDecimal(double d) {
+        return BigDecimal.valueOf(d);
+    }
+
+    public static BigDecimal toBigDecimal(String str) {
+        if (str == null || str.isEmpty() || "null".equals(str)) {
+            return null;
+        }
+
+        if (JDKUtils.STRING_CODER != null) {
+            int code = JDKUtils.STRING_CODER.applyAsInt(str);
+            if (code == JDKUtils.LATIN1 && JDKUtils.STRING_VALUE != null) {
+                byte[] bytes = JDKUtils.STRING_VALUE.apply(str);
+                return parseBigDecimal(bytes, 0, bytes.length);
+            }
+        }
+
+        char[] chars = JDKUtils.getCharArray(str);
+        return parseBigDecimal(chars, 0, chars.length);
+    }
+
+    public static BigDecimal toBigDecimal(char[] chars) {
+        if (chars == null) {
+            return null;
+        }
+        return parseBigDecimal(chars, 0, chars.length);
+    }
+
+    public static BigDecimal toBigDecimal(byte[] strBytes) {
+        if (strBytes == null) {
+            return null;
+        }
+        return parseBigDecimal(strBytes, 0, strBytes.length);
+    }
+
+
+    public static boolean isInt64(BigInteger value) {
+        if (FIELD_BIGINTEGER_MAG_OFFSET != -1) {
+            int[] mag = (int[]) UNSAFE.getObject(value, FIELD_BIGINTEGER_MAG_OFFSET);
+            if (mag.length <= 1) {
+                return true;
+            }
+
+            if (mag.length == 2) {
+                int mag0 = mag[0];
+                return mag[0] >= 0 || (mag0 == Integer.MIN_VALUE && mag[1] == 0 && value.signum() == -1);
+            }
+        }
+        return value.compareTo(BIGINT_INT64_MIN) >= 0 && value.compareTo(BIGINT_INT64_MAX) <= 0;
+    }
+
+    public static long toLongValue(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+
+        if (value instanceof Long) {
+            return (Long) value;
+        }
+
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+
+        if (value instanceof String) {
+            String str = (String) value;
+            if (str.isEmpty() || "null".equals(str)) {
+                return 0;
+            }
+
+            try {
+                int lastCommaIndex = str.lastIndexOf(',');
+                if (lastCommaIndex == str.length() - 4 && str.indexOf('.') == -1) {
+                    return NumberFormat
+                            .getNumberInstance()
+                            .parse(str)
+                            .longValue();
+                }
+            } catch (ParseException ignored) {
+                // ignored
+            }
+
+            if (IOUtils.isNumber(str)) {
+                return Long.parseLong(str);
+            }
+
+            throw new JSONException("parseLong error " + str);
+        }
+
+        throw new JSONException("can not cast to long from " + value.getClass());
+    }
+
+    public static BigDecimal parseBigDecimal(char[] bytes, int off, int len) {
+        if (bytes == null || len == 0) {
+            return null;
+        }
+
+        boolean negative = false;
+        int j = off;
+        if (bytes[off] == '-') {
+            negative = true;
+            j++;
+        }
+
+        if (len <= 20 || (negative && len == 21)) {
+            int end = off + len;
+            int dot = 0;
+            int dotIndex = -1;
+            long unscaleValue = 0;
+            for (; j < end; j++) {
+                char b = bytes[j];
+                if (b == '.') {
+                    dot++;
+                    if (dot > 1) {
+                        break;
+                    }
+                    dotIndex = j;
+                } else if (b >= '0' && b <= '9') {
+                    long r = unscaleValue * 10;
+                    if ((unscaleValue | 10) >>> 31 == 0L || (r / 10 == unscaleValue)) {
+                        unscaleValue = r + (b - '0');
+                    } else {
+                        unscaleValue = -1;
+                        break;
+                    }
+                } else {
+                    unscaleValue = -1;
+                    break;
+                }
+            }
+            int scale = 0;
+            if (unscaleValue >= 0 && dot <= 1) {
+                if (negative) {
+                    unscaleValue = -unscaleValue;
+                }
+                if (dotIndex != -1) {
+                    scale = len - (dotIndex - off) - 1;
+                }
+                return BigDecimal.valueOf(unscaleValue, scale);
+            }
+        }
+
+        return new BigDecimal(bytes, off, len);
+    }
+
+    public static BigDecimal parseBigDecimal(byte[] bytes, int off, int len) {
+        if (bytes == null || len == 0) {
+            return null;
+        }
+
+        boolean negative = false;
+        int j = off;
+        if (bytes[off] == '-') {
+            negative = true;
+            j++;
+        }
+
+        if (len <= 20 || (negative && len == 21)) {
+            int end = off + len;
+            int dot = 0;
+            int dotIndex = -1;
+            long unscaleValue = 0;
+            for (; j < end; j++) {
+                byte b = bytes[j];
+                if (b == '.') {
+                    dot++;
+                    if (dot > 1) {
+                        break;
+                    }
+                    dotIndex = j;
+                } else if (b >= '0' && b <= '9') {
+                    long r = unscaleValue * 10;
+                    if ((unscaleValue | 10) >>> 31 == 0L || (r / 10 == unscaleValue)) {
+                        unscaleValue = r + (b - '0');
+                    } else {
+                        unscaleValue = -1;
+                        break;
+                    }
+                } else {
+                    unscaleValue = -1;
+                    break;
+                }
+            }
+            int scale = 0;
+            if (unscaleValue >= 0 && dot <= 1) {
+                if (negative) {
+                    unscaleValue = -unscaleValue;
+                }
+                if (dotIndex != -1) {
+                    scale = len - (dotIndex - off) - 1;
+                }
+                return BigDecimal.valueOf(unscaleValue, scale);
+            }
+        }
+
+        char[] chars = new char[len];
+        for (int i = 0; i < len; i++) {
+            chars[i] = (char) bytes[off + i];
+        }
+
+        return new BigDecimal(chars, 0, chars.length);
+    }
+
+
+
+
+
+
+    public static int toIntValue(Object value) {
+        if (value == null) {
+            return 0;
+        }
+
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+
+        if (value instanceof String) {
+            String str = (String) value;
+            if (str.isEmpty() || "null".equals(str)) {
+                return 0;
+            }
+
+            try {
+                int lastCommaIndex = str.lastIndexOf(',');
+                if (lastCommaIndex == str.length() - 4 && str.indexOf('.') == -1) {
+                    return NumberFormat
+                            .getNumberInstance()
+                            .parse(str)
+                            .intValue();
+                }
+            } catch (ParseException ignored) {
+                // ignored
+            }
+
+            if (IOUtils.isNumber(str)) {
+                return Integer.parseInt(str);
+            }
+
+            throw new JSONException("parseInt error, " + str);
+        }
+
+        throw new JSONException("can not cast to int");
+    }
+
+    public static double toDoubleValue(Object value) {
+        if (value == null) {
+            return 0D;
+        }
+
+        if (value instanceof Double) {
+            return (Double) value;
+        }
+
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+
+        if (value instanceof String) {
+            String str = (String) value;
+            if (str.isEmpty() || "null".equals(str)) {
+                return 0D;
+            }
+            return Double.parseDouble(str);
+        }
+
+        if ((value instanceof Collection && ((Collection<?>) value).isEmpty())
+                || (value instanceof Map && ((Map<?, ?>) value).isEmpty())) {
+            return 0;
+        }
+
+        if (value instanceof Collection && ((Collection<?>) value).size() == 1) {
+            Object first = ((Collection<?>) value).iterator().next();
+            if (first instanceof Number) {
+                return ((Number) first).doubleValue();
+            } else if (first instanceof String) {
+                return Double.parseDouble((String) first);
+            }
+        }
+
+        throw new JSONException("can not cast to double");
+    }
+
+    public static boolean isJavaScriptSupport(long i) {
+        return i >= LONG_JAVASCRIPT_LOW && i <= LONG_JAVASCRIPT_HIGH;
+    }
+
+    public static boolean isJavaScriptSupport(BigDecimal decimal) {
+        boolean jsSupport = decimal.precision() < 16 || isJavaScriptSupport(decimal.unscaledValue());
+        if (!jsSupport && decimal.scale() != 0) {
+            //Use double for comparison
+            //double and javascript number have the same precision
+            //In extreme cases, precision loss may occur.
+            //There will be a loss of precision between [4.9e-324, 5e-324), which will be converted to 5e-324 by JavaScript.
+            //This situation can be ignored
+            double doubleValue;
+            try {
+                doubleValue = decimal.doubleValue();
+            } catch (Exception ex) {
+                return false;
+            }
+            jsSupport = decimal.compareTo(BigDecimal.valueOf(doubleValue)) == 0;
+        }
+        return jsSupport;
+    }
+
+    public static boolean isJavaScriptSupport(BigInteger i) {
+        return i.compareTo(BIGINT_JAVASCRIPT_LOW) >= 0 && i.compareTo(BIGINT_JAVASCRIPT_HIGH) <= 0;
+    }
+
 }

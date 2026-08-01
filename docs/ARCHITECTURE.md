@@ -21,7 +21,7 @@
 │  └──────────────┘          └──────────────┘                 │
 │  ┌────────────────────────────────────────┐                 │
 │  │          util 层（解析/格式化内核）        │                 │
-│  │ IOUtils · NumberUtils · TypeUtils · Fnv│                 │
+│  │ IOUtils · NumberUtils · Fnv          │                 │
 │  │ JDKUtils · StringUtils · FDBigInteger  │                 │
 │  │ MutableBigInteger · Scientific ·       │                 │
 │  │ ED/ED5/EF（数字查表）· SymbolTable      │                 │
@@ -65,10 +65,10 @@
 
 | 类 | 用途 |
 |-------|---------|
-| `IOUtils` | 字符串/数字批量读写、LE/BE 批量读取、Latin1 检测、转义 |
+| `IOUtils` | 字符串/数字批量读写、LE/BE 批量读取、Latin1 检测、转义；同时承载原 TypeUtils 中仍被调用的数字/类型转换工具（`toBigDecimal` / `toIntValue` / `toLongValue` / `toDoubleValue` / `parseBigDecimal` / `doubleValue` / `floatValue` / `isInt64` / `isJavaScriptSupport` / `toString` 系列，TypeUtils 类已整体删除） |
 | `NumberUtils` | 整数/浮点序列化（`ED`/`ED5`/`EF` 查表）、`Double.toString` 等价实现 |
 | `TypeUtils` | 类型映射、数字字符串解析、基础转换（已裁剪掉 Bean/日期相关方法） |
-| `Fnv` | FNV-1a 64 位哈希，字段名快速匹配 |
+| `Fnv` | FNV-1a 64 位哈希，字段名快速匹配（**保留**：被 JSONReader 三子类与 SymbolTable 调用 37 处，与 AutoType 无关） |
 | `FDBigInteger` / `MutableBigInteger` / `Scientific` | 精确 double/float 解析（JDK `FloatingDecimal` 移植） |
 | `JDKUtils` | `Unsafe` 获取、JDK 版本检测、`String.value` 访问 |
 | `StringUtils` | 字符串工具（ISO-8859-1 等） |
