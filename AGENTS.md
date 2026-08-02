@@ -52,5 +52,5 @@
 
 ## 文档
 
-- 有效文档:`docs/index.md`、`features_cn/en`、`performance_cn/en`、`FAQ_cn/en`、`ARCHITECTURE.md`、`fastjson_1_upgrade_cn/en`、`精简评估报告.md`
-- 旧功能文档(`annotations*`、`Filter/*`、`autotype*`、`mixin*`、`register_custom_reader_writer*`、`reader_codegen*`、`jsontype_seealso*`、`design_jsonreader*` / `design_jsonwriter*`)为"已移除"说明页,不要作为使用指南引用
+- 有效文档:`docs/index.md`、`features_cn/en`、`performance_cn/en`、`FAQ_cn/en`、`ARCHITECTURE.md`、`fastjson_1_upgrade_cn/en`、`精简评估报告.md`、`design_jsonreader_cn/en`、`design_jsonwriter_cn/en`
+- 已删除:`annotations*`、`autotype*`、`Filter/*`、`mixin*`、`jsontype_seealso*`、`reader_codegen*`、`register_custom_reader_writer*` 等"已移除"说明页(功能不存在,2026-08-02 清理),不要重新引用

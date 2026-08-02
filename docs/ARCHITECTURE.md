@@ -2,7 +2,7 @@
 
 ## Overview
 
-本仓库是基于 FASTJSON2 2.0.63 裁剪的 JSON 库（纯树模式），目标是**只提供 `JSON` 文本协议的解析与序列化**，不包含 JavaBean 绑定、反射体系、注解、过滤器与 AutoType。整个代码库仅一个 `core` Maven 模块，共 32 个源文件。
+本仓库是基于 FASTJSON2 2.0.63 裁剪的 JSON 库（纯树模式），目标是**只提供 `JSON` 文本协议的解析与序列化**，不包含 JavaBean 绑定、反射体系、注解、过滤器与 AutoType。整个代码库仅一个 `core` Maven 模块，共 26 个源文件。
 
 ## 架构总览
 
@@ -21,10 +21,10 @@
 │  └──────────────┘          └──────────────┘                 │
 │  ┌────────────────────────────────────────┐                 │
 │  │          util 层（解析/格式化内核）        │                 │
-│  │ IOUtils · NumberUtils · Fnv          │                 │
-│  │ JDKUtils · StringUtils              │                 │
+│  │ IOUtils · NumberUtils · Fnv            │                 │
+│  │ JDKUtils · StringUtils                 │                 │
 │  │ MutableBigInteger · Scientific ·       │                 │
-│  │ ED/ED5/EF（数字查表）· SymbolTable      │                 │
+│  │ ED/ED5/EF（数字查表）                  │                 │
 │  └────────────────────────────────────────┘                 │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -36,7 +36,7 @@
 
 ## 1. API 层
 
-- **`JSON`** - 静态入口：`parse` / `parseObject` / `parseArray` / `toJSONString` / `toJSONBytes` / `writeTo` / `isValid` / `isValidObject` / `isValidArray` / `toJSON`，共 30 个 public 方法
+- **`JSON`** - 静态入口：`parse` / `parseObject` / `parseArray` / `toJSONString` / `toJSONBytes` / `writeTo` / `isValid` / `isValidObject` / `isValidArray` / `toJSON`，共 29 个 public 方法
 - **`JSONObject`** - `LinkedHashMap<String, Object>` 子类，保持插入顺序；提供 `getString` / `getInteger` / `getIntValue` / `getLong` / `getBooleanValue` / `getBigDecimal` / `getJSONObject` / `getJSONArray` 等类型化读取
 - **`JSONArray`** - `ArrayList<Object>` 子类；提供对应的按索引类型化读取
 - **`JSONFactory`** - 创建 read/write 上下文；持有数字解析缓存（`NAME_CACHE` / `DIGITS2` / `NIBBLES` / `FLOAT_10_POW` / `DOUBLE_10_POW`）、`defaultDecimalMaxScale` 等静态配置；`setDefaultObjectSupplier` / `setDefaultArraySupplier` 可定制树模型容器
@@ -67,12 +67,10 @@
 |-------|---------|
 | `IOUtils` | 字符串/数字批量读写、LE/BE 批量读取、Latin1 检测、转义；同时承载原 TypeUtils 中仍被调用的数字/类型转换工具（`toBigDecimal` / `toIntValue` / `toLongValue` / `toDoubleValue` / `parseBigDecimal` / `doubleValue` / `floatValue` / `isInt64` / `isJavaScriptSupport` / `toString` 系列，TypeUtils 类已整体删除） |
 | `NumberUtils` | 整数/浮点序列化（`ED`/`ED5`/`EF` 查表）、`Double.toString` 等价实现 |
-| `TypeUtils` | 类型映射、数字字符串解析、基础转换（已裁剪掉 Bean/日期相关方法） |
-| `Fnv` | FNV-1a 64 位哈希，字段名快速匹配（**保留**：被 JSONReader 三子类与 SymbolTable 调用 37 处，与 AutoType 无关） |
+| `Fnv` | FNV-1a 64 位哈希，字段名快速匹配（**保留**：被 JSONReader 子类调用 37 处，与 AutoType 无关） |
 | `MutableBigInteger` / `Scientific` | 精确 double/float 解析（配合 ED/ED5/EF 查表） |
 | `JDKUtils` | `Unsafe` 获取、JDK 版本检测、`String.value` 访问 |
 | `StringUtils` | 字符串工具（ISO-8859-1 等） |
-| `SymbolTable` | 字段名驻留（注意：位于 `com.alibaba.fastjson2` 包，非 util 包） |
 
 ## 5. 关键设计决策（与上游差异）
 
@@ -108,4 +106,4 @@
 - **构建工具**: Maven（`mvnw` wrapper），单模块 `core`
 - **Java 基线**: JDK 8（`maven.compiler.source` / `target` = 8）
 - **编译参数**: `-XDignore.symbol.file`（允许访问 `sun.misc.Unsafe` 等内部 API）
-- **测试**: JUnit 5（130+ 用例，覆盖树 API 全功能与数字解析边界）
+- **测试**: JUnit 5（158 个用例，14 个测试类，覆盖树 API 全功能与数字解析边界）

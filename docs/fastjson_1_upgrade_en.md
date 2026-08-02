@@ -6,7 +6,7 @@ This repository is a **pure tree-model** build trimmed from fastjson2 2.0.63. Th
 
 - The use case only needs the `JSON` text protocol and the `JSONObject` / `JSONArray` tree model (e.g. web front-end data exchange)
 - Removing the reflection system leaves no `reader` / `writer` / annotations / filters / AutoType at runtime - **zero attack surface**
-- Code shrank from 83,275 to 41,018 lines (-51%); jar ~354KB, easy to audit and embed
+- Code shrank from 83,275 to 36,615 lines (-56%); jar ~321KB, easy to audit and embed
 
 ## 2. Differences from fastjson 1.x
 
