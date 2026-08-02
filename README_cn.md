@@ -2,30 +2,27 @@
 
 # FASTJSON 2 精简版
 
-基于 `FASTJSON 2.0.63` 裁剪的 JSON 库，仅保留 `core` 模块：`JSON` 文本协议解析与序列化、`JSONObject` / `JSONArray` 树模型以及 `JavaBean` 绑定。要求 JDK 8 及以上。制品坐标为 `com.alibaba.fastjson2:fastjson2`，版本 `2.0.63`。
+基于 [FASTJSON 2.0.63](https://github.com/alibaba/fastjson2) 裁剪的 JSON 库,**仅保留纯 JSON 文本协议与树模型 API**(`JSON` / `JSONObject` / `JSONArray`)以及高精度数字核心。已彻底移除反射体系:无 JavaBean 绑定、无注解、无过滤器、无 AutoType。要求 JDK 8 及以上,制品坐标为 `com.alibaba.fastjson2:fastjson2:2.0.63`,同时打包为 OSGi bundle。
 
 ## 功能范围
 
-- `JSON` 文本协议解析与序列化（`String` / `byte[]` 输入，UTF-8 / UTF-16）
-- `JSONObject` / `JSONArray` 树模型
-- `JavaBean` 反序列化与序列化（ASM 与反射两种实现）
-- 注解：`@JSONField`、`@JSONType`、`@JSONCreator`、`@JSONCompiled` 等
-- 序列化过滤器（`NameFilter`、`ValueFilter`、`PropertyFilter` 等）
-- `AutoType` 反序列化支持（默认关闭）
+**支持:**
 
-## 目录
+- `JSON` 文本协议解析与序列化(`String` / `char[]` / `byte[]` / `Reader` / `InputStream` 输入,UTF-8 / UTF-16 / ASCII)
+- `JSONObject` / `JSONArray` 树模型(继承 `LinkedHashMap<String, Object>` / `ArrayList<Object>`)
+- 手写递归解析器(`JSONReader.readAny`)与 `instanceof` 分支序列化(`JSONWriter.writeAny`),不依赖任何 `ObjectReader` / `ObjectWriter` Provider
+- `JSONReader.Feature` / `JSONWriter.Feature`(仅对树模型生效的项有实际作用,详见 [features_cn.md](docs/features_cn.md))
+- 数字高精度解析:`BigDecimal` / `BigInteger` 精确转换,`double` / `float` 走 ED/ED5/EF 查表无精度损失
+- 宽松语法:单引号字符串、非引号字段名等
 
-- [快速开始](#快速开始)
-- [1. 添加依赖](#1-添加依赖)
-- [2. 基本使用](#2-基本使用)
-- [3. 进阶使用](#3-进阶使用)
-- [4. 从 Fastjson 1.x 升级](#4-从-fastjson-1x-升级)
-- [5. 文档索引](#5-文档索引)
-- [6. 参与贡献](#6-参与贡献)
+**已移除:**
+
+- `JSONB` 二进制协议、`JSONPath`、JSON Schema、CSV、Kotlin / Spring / Android 模块、fastjson1-compatible 兼容层、JMH benchmark
+- 整个反射体系:`reader/`、`writer/`、`introspect/`、`annotation/`、`codec/`、`modules/`、`filter/`、`function/`、`internal/` 包及 `TypeReference`
+- JavaBean 绑定:`JSON.parseObject(text, Class)`、`toJavaObject`、`toList`、`@JSONField` / `@JSONType` 注解、序列化过滤器、自定义 `ObjectReader` / `ObjectWriter`、AutoType
+- 日期/时间与 UUID 支持:`Date` / `LocalDate` / `LocalDateTime` / `UUID` 等(遇到会抛 `JSONException`)
 
 ## 快速开始
-
-添加依赖，即刻开始解析 JSON：
 
 ```xml
 <dependency>
@@ -37,211 +34,84 @@
 
 ```java
 import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson2.JSONArray;
 
-// 解析
-User user = JSON.parseObject("{\"name\":\"张三\",\"age\":25}", User.class);
+JSONObject obj = JSON.parseObject("{\"id\":1,\"name\":\"fastjson2\"}");  // 解析文本
+JSONArray arr  = JSON.parseArray("[1,2,3]");                             // 解析数组
 
-// 序列化
-String json = JSON.toJSONString(user);
+String json  = JSON.toJSONString(obj);   // 序列化为 String
+byte[] bytes = JSON.toJSONBytes(obj);    // 序列化为 byte[]
 ```
 
-# 1. 添加依赖
+## 使用
 
-**Maven:**
-
-```xml
-<dependency>
-    <groupId>com.alibaba.fastjson2</groupId>
-    <artifactId>fastjson2</artifactId>
-    <version>2.0.63</version>
-</dependency>
-```
-
-**Gradle:**
-
-```groovy
-dependencies {
-    implementation 'com.alibaba.fastjson2:fastjson2:2.0.63'
-}
-```
-
-# 2. 基本使用
-
-包名为 `com.alibaba.fastjson2`。所有 `JSONWriter.Feature` 与 `JSONReader.Feature` 默认关闭。
-
-## 2.1 解析为 `JSONObject`
+### 解析
 
 ```java
-String text = "{\"id\":1,\"name\":\"fastjson2\"}";
-JSONObject data = JSON.parseObject(text);
+JSONObject obj = JSON.parseObject(text);   // String / char[] / byte[] / Reader / InputStream
+JSONArray  arr = JSON.parseArray(text);    // String / char[] / byte[]
+Object     any = JSON.parse(text);         // JSONObject / JSONArray / String / Number / Boolean
 ```
 
-`byte[]` 输入：
+### 序列化
 
 ```java
-byte[] bytes = ...;
-JSONObject data = JSON.parseObject(bytes);
+String  text  = JSON.toJSONString(obj);   // String
+byte[]  bytes = JSON.toJSONBytes(obj);    // byte[]
+JSON.writeTo(obj, outputStream);          // 写入流
+
+String pretty = obj.toJSONString(JSONWriter.Feature.PrettyFormat);
 ```
 
-## 2.2 解析为 `JSONArray`
+序列化支持的类型:`JSONObject`、`JSONArray`、`Map`、`List`、`String`、`Number`(含 `BigDecimal` / `BigInteger`)、`Boolean`、`null`。其他类型(如 `Date`、自定义对象)会抛出 `JSONException`。
 
-```java
-String text = "[1,2,3]";
-JSONArray data = JSON.parseArray(text);
-```
-
-## 2.3 解析为 `JavaBean`
-
-```java
-String text = "{\"id\":1,\"name\":\"fastjson2\"}";
-User user = JSON.parseObject(text, User.class);
-```
-
-## 2.4 解析为任意类型
-
-```java
-Object value = JSON.parse("{\"id\":1}");       // JSONObject
-Object value = JSON.parse("[1,2,3]");          // JSONArray
-Object value = JSON.parse("1.5");              // BigDecimal
-```
-
-## 2.5 序列化
-
-```java
-String text = JSON.toJSONString(obj);          // String
-byte[] bytes = JSON.toJSONBytes(obj);          // byte[]
-```
-
-`JSONObject` / `JSONArray` 实例方法：
-
-```java
-String text = obj.toJSONString();
-String text = obj.toJSONString(JSONWriter.Feature.PrettyFormat);
-```
-
-## 2.6 `JSONObject` / `JSONArray` 操作
-
-读取属性：
+### 树模型操作
 
 ```java
 JSONObject obj = JSON.parseObject("{\"id\":2,\"name\":\"fastjson2\",\"enable\":true}");
 
-int id = obj.getIntValue("id");
-String name = obj.getString("name");
-boolean enable = obj.getBooleanValue("enable");
-```
+int id       = obj.getIntValue("id");
+String name  = obj.getString("name");
+boolean en   = obj.getBooleanValue("enable");
 
-读取嵌套结构：
+JSONObject child = obj.getJSONObject("child");   // 嵌套对象
+JSONArray  items = obj.getJSONArray("items");    // 嵌套数组
 
-```java
-JSONArray array = obj.getJSONArray("items");
-JSONObject child = obj.getJSONObject("child");
-```
-
-修改：
-
-```java
 obj.put("key", value);
 obj.remove("key");
-obj.containsKey("key");
 ```
 
-`Map` / `List` 语义：
+`JSONObject` 继承自 `Map<String, Object>`,`JSONArray` 继承自 `List<Object>`,可直接使用集合 API。
 
-`JSONObject` 继承自 `Map<String, Object>`，`JSONArray` 继承自 `List<Object>`，可直接使用集合 API。
-
-# 3. 进阶使用
-
-## 3.1 Feature 配置
-
-`JSONWriter.Feature` 与 `JSONReader.Feature` 控制序列化和反序列化行为。所有 Feature 默认关闭。
+### Feature 配置
 
 ```java
-// 带 Feature 的序列化
-String json = JSON.toJSONString(user,
-    JSONWriter.Feature.WriteNulls,
-    JSONWriter.Feature.PrettyFormat);
+String json = JSON.toJSONString(obj,
+        JSONWriter.Feature.WriteMapNullValue,     // 输出 null 值(默认跳过)
+        JSONWriter.Feature.PrettyFormat);         // 格式化输出
 
-// 带 Feature 的反序列化
-User user = JSON.parseObject(json, User.class,
-    JSONReader.Feature.SupportSmartMatch);
+JSONObject obj = JSON.parseObject(text,
+        JSONReader.Feature.UseDoubleForDecimals); // 小数解析为 double(默认 BigDecimal)
 ```
 
-完整的 Feature 列表请参阅 [Feature 参考文档](docs/features_cn.md)。
+完整列表见 [features_cn.md](docs/features_cn.md)。
 
-## 3.2 注解
-
-使用 `@JSONField` 和 `@JSONType` 自定义序列化 / 反序列化行为：
-
-```java
-public class User {
-    @JSONField(name = "user_name", ordinal = 1)
-    public String name;
-
-    @JSONField(format = "yyyy-MM-dd", ordinal = 2)
-    public Date birthday;
-
-    @JSONField(serialize = false)
-    public String password;
-}
-```
-
-详见 [注解使用指南](docs/annotations_cn.md)。
-
-## 3.3 自定义序列化 / 反序列化
-
-实现 `ObjectWriter<T>` 或 `ObjectReader<T>` 以自定义序列化逻辑：
-
-```java
-class MoneyWriter implements ObjectWriter<Money> {
-    public void write(JSONWriter jsonWriter, Object object, Object fieldName, Type fieldType, long features) {
-        Money money = (Money) object;
-        jsonWriter.writeString(money.getCurrency() + " " + money.getAmount());
-    }
-}
-
-JSON.register(Money.class, new MoneyWriter());
-```
-
-详见 [自定义 Reader/Writer 指南](docs/register_custom_reader_writer_cn.md)。
-
-## 3.4 过滤器
-
-过滤器用于转换序列化输出：
-
-| 过滤器 | 用途 |
-|--------|------|
-| `ValueFilter` | 转换属性值 |
-| `NameFilter` | 重命名属性 |
-| `PropertyFilter` | 条件性包含 / 排除属性 |
-| `AfterFilter` / `BeforeFilter` | 注入额外内容 |
-| `LabelFilter` | 基于场景的序列化 |
-| `ContextValueFilter` / `ContextNameFilter` | 上下文感知转换 |
-
-详见 [过滤器文档](docs/Filter/index_cn.md)。
-
-# 4. 从 Fastjson 1.x 升级
-
-包名与 1.x 使用的 `com.alibaba.fastjson` 不同，为 `com.alibaba.fastjson2`。所有 Feature 默认关闭，`AutoType` 默认关闭。
-
-API 差异详见 [升级指南](docs/fastjson_1_upgrade_cn.md)。
-
-# 5. 文档索引
+## 文档索引
 
 | 文档 | 说明 |
 |------|------|
 | [index.md](docs/index.md) | 本精简版概述 |
-| [Feature 参考](docs/features_cn.md) | `JSONReader` / `JSONWriter` Feature 完整列表 |
-| [注解指南](docs/annotations_cn.md) | `@JSONField`、`@JSONType`、`@JSONCreator` 使用说明 |
-| [自定义 Reader/Writer](docs/register_custom_reader_writer_cn.md) | 实现 `ObjectReader` / `ObjectWriter` |
-| [过滤器](docs/Filter/index_cn.md) | 序列化过滤器 |
-| [AutoType 安全](docs/autotype_cn.md) | AutoType 机制和安全配置 |
-| [MixIn 注解](docs/mixin_cn.md) | 为第三方类注入注解 |
-| [性能优化指南](docs/performance_cn.md) | 调优建议 |
-| [升级指南](docs/fastjson_1_upgrade_cn.md) | 从 Fastjson 1.x 升级 |
-| [架构文档](docs/ARCHITECTURE.md) | 内部设计 |
-| [常见问题](docs/FAQ_cn.md) | 常见问题与排查 |
+| [features_cn.md](docs/features_cn.md) | `JSONReader` / `JSONWriter` Feature 列表 |
+| [performance_cn.md](docs/performance_cn.md) | 性能优化建议 |
+| [FAQ_cn.md](docs/FAQ_cn.md) | 常见问题 |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 内部设计 |
+| [fastjson_1_upgrade_cn.md](docs/fastjson_1_upgrade_cn.md) | 从 Fastjson 1.x 升级 |
 
-# 6. 参与贡献
+## 参与贡献
 
-欢迎提交 Bug 报告与 Pull Request。
+见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+
+## 许可证
+
+[Apache License 2.0](LICENSE)。
