@@ -2382,6 +2382,11 @@ class JSONWriterUTF16
                 continue;
             }
 
+            if (valueClass == BigInteger.class) {
+                writeBigInt((BigInteger) value, 0);
+                continue;
+            }
+
             if (valueClass == Double.class) {
                 writeDouble((Double) value);
                 continue;
@@ -2482,6 +2487,11 @@ class JSONWriterUTF16
 
             if (valueClass == BigDecimal.class) {
                 writeDecimal((BigDecimal) o, 0, null);
+                continue;
+            }
+
+            if (valueClass == BigInteger.class) {
+                writeBigInt((BigInteger) o, 0);
                 continue;
             }
 

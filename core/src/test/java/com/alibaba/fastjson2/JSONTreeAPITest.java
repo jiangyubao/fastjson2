@@ -77,6 +77,18 @@ public class JSONTreeAPITest {
     }
 
     @Test
+    public void serializeBigInteger() {
+        // 超出 long 范围的大整数解析为 BigInteger 后应可序列化(OSGi 冒烟测试暴露的 bug)
+        JSONObject obj = JSON.parseObject("{\"v\":123456789012345678901234567890}");
+        assertEquals("123456789012345678901234567890", obj.getBigInteger("v").toString());
+        String json = JSON.toJSONString(obj);
+        assertTrue(json.contains("123456789012345678901234567890"), json);
+        // 回环
+        JSONObject back = JSON.parseObject(json);
+        assertEquals("123456789012345678901234567890", back.getBigInteger("v").toString());
+    }
+
+    @Test
     public void parseBigDecimalPrecision() {
         JSONObject obj = JSON.parseObject("{\"v\":123.45678901234567890}");
         BigDecimal decimal = obj.getBigDecimal("v");

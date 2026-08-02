@@ -96,12 +96,7 @@ public class JDKUtils {
             if (javaSpecVer != null && javaSpecVer.indexOf('.') == -1) {
                 jvmVersion = Integer.parseInt(javaSpecVer);
             }
-
-            if (android) {
-                android_sdk_int = Class.forName("android.os.Build$VERSION")
-                        .getField("SDK_INT")
-                        .getInt(null);
-            }
+            // android.os detection removed - server-side only
         } catch (Throwable e) {
             initErrorLast = e;
         }

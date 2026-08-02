@@ -36,6 +36,33 @@
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.apache.felix</groupId>
+                <artifactId>maven-bundle-plugin</artifactId>
+                <version>5.1.9</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <instructions>
+                        <Bundle-SymbolicName>com.alibaba.fastjson2</Bundle-SymbolicName>
+                        <Bundle-Name>fastjson2 (OSGi)</Bundle-Name>
+                        <Bundle-Vendor>Alibaba</Bundle-Vendor>
+                        <Bundle-Description>Pure tree-model JSON library trimmed from fastjson2</Bundle-Description>
+                        <Export-Package>com.alibaba.fastjson2;version="${project.version}",com.alibaba.fastjson2.util;version="${project.version}"</Export-Package>
+                        <Import-Package>!jdk.internal.misc,!com.alibaba.fastjson2,!com.alibaba.fastjson2.util,sun.misc;resolution:=optional,*</Import-Package>
+                        <Private-Package>com.alibaba.fastjson2.*</Private-Package>
+                        <_removeheaders>Bnd-LastModified,Tool</_removeheaders>
+                    </instructions>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>bundle-manifest</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>bundle</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>
