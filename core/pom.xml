@@ -24,6 +24,8 @@
     </properties>
 
     <build>
+        <!-- OSGi bundle 文件名遵循 <BSN>_<version>.jar 惯例 -->
+        <finalName>com.alibaba.fastjson2_${project.version}</finalName>
         <plugins>
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>

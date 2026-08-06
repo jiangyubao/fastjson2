@@ -4,6 +4,10 @@ target/
 *.jar
 hs_err_pid*
 
+# --- Maven wrapper scripts (not tracked, kept locally) ---
+mvnw
+mvnw.cmd
+
 # --- Logs & temp ---
 *.log
 *.tmp
